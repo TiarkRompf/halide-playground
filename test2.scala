@@ -105,9 +105,9 @@ object Test2 {
         computeVar = Nil
       }
 
-      def reorder(x: Var, y: Var): Unit = {
+      def reorder(xs: Var*): Unit = {
         assert(true) // todo: sanity checks! must be permutation
-        order = List(y.s,x.s) // note: reverse!
+        order = xs.map(_.s).toList.reverse // note: reverse!
       }
 
       def split(x: Var, x_outer: Var, x_inner: Var, factor: Int): Unit = {
@@ -385,6 +385,44 @@ object Test2 {
       gradient.print_loop_nest();
     }
 
+    def test55(): Unit = {
+      // Evaluating in tiles.
+      val x = Var("x")
+      val y = Var("y")
+
+      val gradient = Func("gradient_tiled")
+      gradient(x, y) = x + y
+      gradient.trace_stores()
+
+      val x_outer = Var("x_outer")
+      val x_inner = Var("x_inner")
+      val y_outer = Var("y_outer")
+      val y_inner = Var("y_inner")
+      gradient.split(x, x_outer, x_inner, 4)
+      gradient.split(y, y_outer, y_inner, 4)
+      gradient.reorder(x_inner, y_inner, x_outer, y_outer)
+
+      println("Evaluating gradient in 4x4 tiles");
+      val output = gradient.realize[Int](8, 8);
+
+      println("Equivalent C:");
+      for (y_outer <- 0 until 2) {
+          for (x_outer <- 0 until 2) {
+              for (y_inner <- 0 until 4) {
+                  for (x_inner <- 0 until 4) {
+                      val x = x_outer * 4 + x_inner
+                      val y = y_outer * 4 + y_inner
+                      println(s"Evaluating at x = $x, y = $y: ${ x + y }")
+                  }
+              }
+          }
+      }
+
+      println("Pseudo-code for the schedule:");
+      gradient.print_loop_nest();
+    }
+
+
   def main(args: Array[String]): Unit = {
     test1()
     //test2()
@@ -392,6 +430,7 @@ object Test2 {
     test52()
     test53()
     test54()
+    test55()
 
     println("done")
   }
