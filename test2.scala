@@ -89,14 +89,41 @@ object Test2 {
 
     case class Func(s: String) {
       var impl: FuncInternal = _
+      var order: List[String] = _
+
+      var trace = false
+
+      type Env = Map[String,Int]
+
+      var computeBounds: List[(String, Env => Int)] = _
+      var computeVar: List[(String, Env => Int)] = _
 
       def update(x: Var, y: Var, body: Expr): Unit = {
         impl = FuncInternal(x,y,body)
+        order = List(y.s,x.s)
+        computeBounds = Nil
+        computeVar = Nil
+      }
+
+      def reorder(x: Var, y: Var): Unit = {
+        assert(true) // todo: sanity checks! must be permutation
+        order = List(y.s,x.s) // note: reverse!
+      }
+
+      def split(x: Var, x_outer: Var, x_inner: Var, factor: Int): Unit = {
+        assert(true) // todo: sanity checks! outer/inner fresh
+        order = order.flatMap(s => if (s == x.s) List(x_outer.s, x_inner.s) else List(s))
+        computeVar    :+= ((x.s, (env:Env) => env(x_outer.s) * factor + env(x_inner.s)))
+        computeBounds :+= ((x_outer.s, (bounds: Env) => bounds(x.s) / factor)) // assert evenly divisible!!
+        computeBounds :+= ((x_inner.s, (bounds: Env) => factor))
       }
 
       def realize[T:Type](w: Int, h: Int): Buffer[T] = {
         val buf = new Buffer[T](w, h)
         var bounds = Map(impl.x.s -> w, impl.y.s -> h)
+
+        for ((s,f) <- computeBounds)
+          bounds += (s -> f(bounds))
 
         def loop(vs: List[String], env: Map[String,Int])(f: Map[String,Int] => Unit): Unit = vs match {
           case Nil => f(env)
@@ -105,6 +132,8 @@ object Test2 {
 
         loop(order, Map()) { e0 =>
           implicit var env = e0
+          for ((s,f) <- computeVar)
+            env += (s -> f(env))
           val i = env(impl.x.s)
           val j = env(impl.y.s)
           if (trace) println(s"$i,$j")
@@ -113,9 +142,15 @@ object Test2 {
         buf
       }
 
+      def trace_stores() = trace = true
+
       def print_loop_nest(): Unit = {
+        for ((s,_) <- computeBounds)
+          println(s"val max_${s} = ...")
         for (x <- order)
           println(s"for ${x}:")
+        for ((s,_) <- computeVar)
+          println(s"val ${s} = ...")
         println(s"$s(...) = ...")
       }
 
@@ -236,9 +271,90 @@ object Test2 {
       println("Success!")
     }
 
+    def test51(): Unit = {
+      // First we observe the default ordering.
+      val x = Var("x")
+      val y = Var("y")
+
+      val gradient = Func("gradient")
+      gradient(x, y) = x + y
+      gradient.trace_stores()
+
+      println("Evaluating gradient row-major");
+      val output = gradient.realize[Int](4, 4);
+
+      println("Equivalent C:");
+      for (y <- 0 until 4) {
+          for (x <- 0 until 4) {
+              println(s"Evaluating at x = $x, y = $y: ${x + y}");
+          }
+      }
+
+      println("Pseudo-code for the schedule:");
+      gradient.print_loop_nest();
+    }
+
+    def test52(): Unit = {
+      // Reorder variables.
+      val x = Var("x")
+      val y = Var("y")
+
+      val gradient = Func("gradient")
+      gradient(x, y) = x + y
+      gradient.trace_stores()
+
+      gradient.reorder(y, x)
+
+      println("Evaluating gradient column-major");
+      val output = gradient.realize[Int](4, 4);
+
+      println("Equivalent C:");
+      for (x <- 0 until 4) {
+          for (y <- 0 until 4) {
+              println(s"Evaluating at x = $x, y = $y: ${x + y}");
+          }
+      }
+
+      println("Pseudo-code for the schedule:");
+      gradient.print_loop_nest();
+    }
+
+    def test53(): Unit = {
+      // Split a variable into two.
+      val x = Var("x")
+      val y = Var("y")
+
+      val gradient = Func("gradient")
+      gradient(x, y) = x + y
+      gradient.trace_stores()
+
+      val x_outer = Var("x_outer")
+      val x_inner = Var("x_inner")
+      gradient.split(x, x_outer, x_inner, 2) // XXXX TODO XXXX
+
+      println("Evaluating gradient with x split into x_outer and x_inner");
+      val output = gradient.realize[Int](4, 4);
+
+      println("Equivalent C:");
+      for (y <- 0 until 4) {
+        for (x_outer <- 0 until 2) {   // run until w / 2
+          for (x_inner <- 0 until 2) { // split factor 2
+              val x = x_outer * 2 + x_inner;
+              println(s"Evaluating at x = $x, y = $y: ${x + y}");
+          }
+        }
+      }
+
+      println("Pseudo-code for the schedule:");
+      gradient.print_loop_nest();
+    }
+
   def main(args: Array[String]): Unit = {
     test1()
-    test2()
+    //test2()
+    test51()
+    test52()
+    test53()
 
     println("done")
   }
