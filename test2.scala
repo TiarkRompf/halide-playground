@@ -96,7 +96,7 @@ object Test2 {
       type Env = Map[String,Int]
 
       var computeBounds: List[(String, Env => Int)] = _
-      var computeVar: List[(String, Env => Int)] = _
+      var computeVar: List[(String, (Env,Env) => Int)] = _
 
       def update(x: Var, y: Var, body: Expr): Unit = {
         impl = FuncInternal(x,y,body)
@@ -113,9 +113,19 @@ object Test2 {
       def split(x: Var, x_outer: Var, x_inner: Var, factor: Int): Unit = {
         assert(true) // todo: sanity checks! outer/inner fresh
         order = order.flatMap(s => if (s == x.s) List(x_outer.s, x_inner.s) else List(s))
-        computeVar    :+= ((x.s, (env:Env) => env(x_outer.s) * factor + env(x_inner.s)))
-        computeBounds :+= ((x_outer.s, (bounds: Env) => bounds(x.s) / factor)) // assert evenly divisible!!
+        computeBounds :+= ((x_outer.s, (bounds: Env) => { assert(bounds(x.s) % factor == 0); bounds(x.s) / factor })) // assert evenly divisible!!
         computeBounds :+= ((x_inner.s, (bounds: Env) => factor))
+        computeVar    :+= ((x.s, (env:Env,bounds:Env) => env(x_outer.s) * factor + env(x_inner.s)))
+      }
+
+      def fuse(x: Var, y: Var, fused: Var): Unit = {
+        assert(true) // todo: sanity checks! fused fresh
+        // Q: which position? need to be adjacent?
+        // currently we assume y is outer, and we fuse into that position
+        order = order.flatMap(s => if (s == y.s) List(fused.s) else if (s == x.s) List() else List(s))
+        computeBounds :+= ((fused.s, (bounds: Env) => bounds(x.s) * bounds(y.s)))
+        computeVar    :+= ((y.s, (env:Env,bounds:Env) => env(fused.s) / bounds(x.s)))
+        computeVar    :+= ((x.s, (env:Env,bounds:Env) => env(fused.s) % bounds(x.s)))
       }
 
       def realize[T:Type](w: Int, h: Int): Buffer[T] = {
@@ -133,7 +143,7 @@ object Test2 {
         loop(order, Map()) { e0 =>
           implicit var env = e0
           for ((s,f) <- computeVar)
-            env += (s -> f(env))
+            env += (s -> f(env,bounds))
           val i = env(impl.x.s)
           val j = env(impl.y.s)
           if (trace) println(s"$i,$j")
@@ -299,7 +309,7 @@ object Test2 {
       val x = Var("x")
       val y = Var("y")
 
-      val gradient = Func("gradient")
+      val gradient = Func("gradient_col_major")
       gradient(x, y) = x + y
       gradient.trace_stores()
 
@@ -324,13 +334,13 @@ object Test2 {
       val x = Var("x")
       val y = Var("y")
 
-      val gradient = Func("gradient")
+      val gradient = Func("gradient_split")
       gradient(x, y) = x + y
       gradient.trace_stores()
 
       val x_outer = Var("x_outer")
       val x_inner = Var("x_inner")
-      gradient.split(x, x_outer, x_inner, 2) // XXXX TODO XXXX
+      gradient.split(x, x_outer, x_inner, 2)
 
       println("Evaluating gradient with x split into x_outer and x_inner");
       val output = gradient.realize[Int](4, 4);
@@ -349,12 +359,39 @@ object Test2 {
       gradient.print_loop_nest();
     }
 
+    def test54(): Unit = {
+      // Fuse two variables into one.
+      val x = Var("x")
+      val y = Var("y")
+
+      val gradient = Func("gradient_fused")
+      gradient(x, y) = x + y
+      gradient.trace_stores()
+
+      val fused = Var("fused")
+      gradient.fuse(x, y, fused)
+
+      println("Evaluating gradient with x and y fused");
+      val output = gradient.realize[Int](4, 4);
+
+      println("Equivalent C:");
+      for (fused <- 0 until 4*4) {
+          val y = fused / 4;
+          val x = fused % 4;
+          println(s"Evaluating at x = $x, y = $y: ${ x + y }")
+      }
+
+      println("Pseudo-code for the schedule:");
+      gradient.print_loop_nest();
+    }
+
   def main(args: Array[String]): Unit = {
     test1()
     //test2()
     test51()
     test52()
     test53()
+    test54()
 
     println("done")
   }
