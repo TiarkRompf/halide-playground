@@ -98,11 +98,14 @@ object Test2 {
       var computeBounds: List[(String, Env => Int)] = _
       var computeVar: List[(String, (Env,Env) => Int)] = _
 
+      var vectorized: List[String] = _
+
       def update(x: Var, y: Var, body: Expr): Unit = {
         impl = FuncInternal(x,y,body)
         order = List(y.s,x.s)
         computeBounds = Nil
         computeVar = Nil
+        vectorized = Nil
       }
 
       def reorder(xs: Var*): Unit = {
@@ -128,6 +131,12 @@ object Test2 {
         computeVar    :+= ((x.s, (env:Env,bounds:Env) => env(fused.s) % bounds(x.s)))
       }
 
+      def vectorize(x: Var): Unit = {
+        assert(true) // what to check?
+        // currently a no-op
+        vectorized :+= x.s
+      }
+
       def realize[T:Type](w: Int, h: Int): Buffer[T] = {
         val buf = new Buffer[T](w, h)
         var bounds = Map(impl.x.s -> w, impl.y.s -> h)
@@ -139,6 +148,8 @@ object Test2 {
           case Nil => f(env)
           case x::vs => for (i <- 0 until bounds(x)) loop(vs, env + (x -> i))(f)
         }
+
+        // todo: vectorize is currently a no-op for execution
 
         loop(order, Map()) { e0 =>
           implicit var env = e0
@@ -158,7 +169,10 @@ object Test2 {
         for ((s,_) <- computeBounds)
           println(s"val max_${s} = ...")
         for (x <- order)
-          println(s"for ${x}:")
+          if (vectorized contains x)
+            println(s"for ${x} (vectorized):")
+          else
+            println(s"for ${x}:")
         for ((s,_) <- computeVar)
           println(s"val ${s} = ...")
         println(s"$s(...) = ...")
@@ -422,6 +436,43 @@ object Test2 {
       gradient.print_loop_nest();
     }
 
+    def test56(): Unit = {
+      // Evaluating in vectors.
+      val x = Var("x")
+      val y = Var("y")
+
+      val gradient = Func("gradient_in_vectors")
+      gradient(x, y) = x + y
+      gradient.trace_stores()
+
+      val x_outer = Var("x_outer")
+      val x_inner = Var("x_inner")
+      gradient.split(x, x_outer, x_inner, 4)
+      gradient.vectorize(x_inner)
+
+      println("Evaluating gradient with x_inner vectorized");
+      val output = gradient.realize[Int](8, 4);
+
+      println("Equivalent C:");
+      for (y <- 0 until 4) {
+          for (x_outer <- 0 until 2) {
+              val x_vec = (x_outer * 4 + 0,
+                           x_outer * 4 + 1,
+                           x_outer * 4 + 2,
+                           x_outer * 4 + 3)
+
+              val value = (x_vec._1 + y,
+                           x_vec._2 + y,
+                           x_vec._3 + y,
+                           x_vec._4 + y)
+              println(s"Evaluating at $x_vec, ${(y,y,y,y)}: $value")
+          }
+      }
+
+      println("Pseudo-code for the schedule:");
+      gradient.print_loop_nest();
+    }
+
 
   def main(args: Array[String]): Unit = {
     test1()
@@ -431,6 +482,7 @@ object Test2 {
     test53()
     test54()
     test55()
+    test56()
 
     println("done")
   }
