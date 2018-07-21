@@ -99,6 +99,7 @@ object Test2 {
       var computeVar: List[(String, (Env,Env) => Int)] = _
 
       var vectorized: List[String] = _
+      var unrolled: List[String] = _
 
       def update(x: Var, y: Var, body: Expr): Unit = {
         impl = FuncInternal(x,y,body)
@@ -106,6 +107,7 @@ object Test2 {
         computeBounds = Nil
         computeVar = Nil
         vectorized = Nil
+        unrolled = Nil
       }
 
       def reorder(xs: Var*): Unit = {
@@ -135,6 +137,11 @@ object Test2 {
         assert(true) // what to check?
         // currently a no-op
         vectorized :+= x.s
+      }
+      def unroll(x: Var): Unit = {
+        assert(true) // what to check?
+        // currently a no-op
+        unrolled :+= x.s
       }
 
       def realize[T:Type](w: Int, h: Int): Buffer[T] = {
@@ -169,7 +176,9 @@ object Test2 {
         for ((s,_) <- computeBounds)
           println(s"val max_${s} = ...")
         for (x <- order)
-          if (vectorized contains x)
+          if (unrolled contains x)
+            println(s"for ${x} (unrolled):")
+          else if (vectorized contains x)
             println(s"for ${x} (vectorized):")
           else
             println(s"for ${x}:")
@@ -416,6 +425,9 @@ object Test2 {
       gradient.split(y, y_outer, y_inner, 4)
       gradient.reorder(x_inner, y_inner, x_outer, y_outer)
 
+      // This pattern is common enough that there's a shorthand for it:
+      // gradient.tile(x, y, x_outer, y_outer, x_inner, y_inner, 4, 4);
+
       println("Evaluating gradient in 4x4 tiles");
       val output = gradient.realize[Int](8, 8);
 
@@ -450,6 +462,21 @@ object Test2 {
       gradient.split(x, x_outer, x_inner, 4)
       gradient.vectorize(x_inner)
 
+      // Splitting and then vectorizing the inner variable is common
+      // enough that there's a short-hand for it. We could have also
+      // said:
+      //
+      // gradient.vectorize(x, 4);
+      //
+      // which is equivalent to:
+      //
+      // gradient.split(x, x, x_inner, 4);
+      // gradient.vectorize(x_inner);
+      //
+      // Note that in this case we reused the name 'x' as the new
+      // outer variable. Later scheduling calls that refer to x
+      // will refer to this new outer variable named x.
+
       println("Evaluating gradient with x_inner vectorized");
       val output = gradient.realize[Int](8, 4);
 
@@ -473,6 +500,45 @@ object Test2 {
       gradient.print_loop_nest();
     }
 
+    def test57(): Unit = {
+      // Unrolling a loop.
+      val x = Var("x")
+      val y = Var("y")
+
+      val gradient = Func("gradient_in_vectors")
+      gradient(x, y) = x + y
+      gradient.trace_stores()
+
+      val x_outer = Var("x_outer")
+      val x_inner = Var("x_inner")
+      gradient.split(x, x_outer, x_inner, 2)
+      gradient.unroll(x_inner)
+
+      // The shorthand for this is:
+      // gradient.unroll(x, 2);
+
+      println("Evaluating gradient unrolled by a factor of two");
+      val output = gradient.realize[Int](4, 4);
+
+      println("Equivalent C:");
+      for (y <- 0 until 4) {
+          for (x_outer <- 0 until 2) {
+            {
+              val x_inner = 0
+              val x = x_outer * 2 + x_inner;
+              println(s"Evaluating at x = $x, y = $y: ${x + y}");
+            }
+            {
+              val x_inner = 1
+              val x = x_outer * 2 + x_inner;
+              println(s"Evaluating at x = $x, y = $y: ${x + y}");
+            }
+          }
+      }
+
+      println("Pseudo-code for the schedule:");
+      gradient.print_loop_nest();
+    }
 
   def main(args: Array[String]): Unit = {
     test1()
@@ -483,6 +549,7 @@ object Test2 {
     test54()
     test55()
     test56()
+    test57()
 
     println("done")
   }
