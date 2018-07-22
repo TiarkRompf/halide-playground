@@ -112,6 +112,11 @@ object Test2 {
       case Apply3(f,a,b,c) => tpe.fromInt(f(eval[Int](a), eval[Int](b), eval[Int](c)).asInstanceOf[UByte]) // assume byte
     }
 
+    def traverse(x: Any)(f: Any => Unit): Unit = { f(x); x match {
+      case x: Product => x.productIterator.foreach(x => traverse(x)(f))
+      case _ =>
+    }}
+
     case class FuncInternal(x: Var, y: Var, body: Expr)
 
     case class Func(s: String) {
@@ -195,7 +200,26 @@ object Test2 {
         computeRoot = true
       }
 
+      def getAllStages: List[Func] = {
+        var fs: List[Func] = Nil
+        def traverseFun(f: Func): Unit = {
+          fs ::= f
+          traverse(f.impl.body) {
+            case f1@Func(s) if f1.computeRoot => traverseFun(f1)
+            case _ => 
+          }
+        }
+        traverseFun(this)
+        fs.distinct
+      }
+
       def realize[T:Type](w: Int, h: Int): Buffer[T] = {
+        //val fs = getAllStages
+        //fs.foreach(_.realize_internal) // XXX TODO: dimensions? need stencil analysis!!!
+        realize_internal(w,h)
+      }
+
+      def realize_internal[T:Type](w: Int, h: Int): Buffer[T] = {
         val buf = new Buffer[T](w, h)
         var bounds = Map(impl.x.s -> w, impl.y.s -> h)
 
@@ -207,7 +231,7 @@ object Test2 {
           case x::vs => for (i <- 0 until bounds(x)) loop(vs, env + (x -> i))(f)
         }
 
-        // todo: vectorize is currently a no-op for execution
+        // todo: vectorize/unroll/parallel are currently no-ops for execution
 
         loop(order, Map()) { e0 =>
           implicit var env = e0
@@ -222,6 +246,12 @@ object Test2 {
       }
 
       def print_loop_nest(): Unit = {
+        val fs = getAllStages
+        println("stages: " + fs.map(_.s).mkString(", "))
+        fs.foreach(_.print_loop_nest_internal)
+      }
+
+      def print_loop_nest_internal(): Unit = {
         for ((s,_) <- computeBounds)
           println(s"val max_${s} = ...")
         for (x <- order)
@@ -860,6 +890,7 @@ object Test2 {
     test5A()
 
     test81()
+    test82()
 
     println("done")
   }
