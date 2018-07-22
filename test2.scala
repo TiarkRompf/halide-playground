@@ -1310,7 +1310,6 @@ object Test2 {
         // - Calls to sin: 40
     }
 
-/*
     // So what's the catch? Why not always do
     // producer.store_root().compute_at(consumer, x) for this type of
     // code?
@@ -1326,13 +1325,17 @@ object Test2 {
     // and won't fold the storage down into a circular buffer either,
     // which makes our store_root pointless.
 
+    def test86(): Unit = {
     // We're running out of options. We can make new ones by
     // splitting. We can store_at or compute_at at the natural
     // variables of the consumer (x and y), or we can split x or y
     // into new inner and outer sub-variables and then schedule with
     // respect to those. We'll use this to express fusion in tiles:
-    {
-        Func producer("producer_tile"), consumer("consumer_tile");
+
+        val x = Var("x")
+        val y = Var("y")
+        val producer = Func("producer_tile")
+        val consumer = Func("consumer_tile");
         producer(x, y) = sin(x * y);
         consumer(x, y) = (producer(x, y) +
                           producer(x, y+1) +
@@ -1340,7 +1343,8 @@ object Test2 {
                           producer(x+1, y+1))/4;
 
         // We'll compute 8x8 of the consumer, in 4x4 tiles.
-        Var x_outer, y_outer, x_inner, y_inner;
+        val (x_outer, y_outer, x_inner, y_inner) = 
+          (Var("x_outer"), Var("y_outer"), Var("x_inner"), Var("y_inner"))
         consumer.tile(x, y, x_outer, y_outer, x_inner, y_inner, 4, 4);
 
         // Compute the producer per tile of the consumer
@@ -1356,17 +1360,17 @@ object Test2 {
         producer.trace_stores();
         consumer.trace_stores();
 
-        printf("\nEvaluating:\n"
-               "consumer.tile(x, y, x_outer, y_outer, x_inner, y_inner, 4, 4);\n"
-               "producer.compute_at(consumer, x_outer);\n");
-        consumer.realize(8, 8);
+        println("Evaluating:\n"+
+               "consumer.tile(x, y, x_outer, y_outer, x_inner, y_inner, 4, 4);\n"+
+               "producer.compute_at(consumer, x_outer);");
+        consumer.realize[Double](8, 8);
 
         // See figures/lesson_08_tile.gif for a visualization.
 
         // The producer and consumer now alternate on a per-tile
         // basis. Here's the equivalent C:
 
-        float result[8][8];
+        /*float result[8][8];
 
         // For every tile of the consumer:
         for (int y_outer = 0; y_outer < 2; y_outer++) {
@@ -1398,11 +1402,10 @@ object Test2 {
                     }
                 }
             }
-        }
+        }*/
 
-        printf("Pseudo-code for the schedule:\n");
+        println("Pseudo-code for the schedule:");
         consumer.print_loop_nest();
-        printf("\n");
 
         // Tiling can make sense for problems like this one with
         // stencils that reach outwards in x and y. Each tile can be
@@ -1410,7 +1413,7 @@ object Test2 {
         // done by each tile isn't so bad once the tiles get large
         // enough.
     }
-
+/*
     // Let's try a mixed strategy that combines what we have done with
     // splitting, parallelizing, and vectorizing. This is one that
     // often works well in practice for large images. If you
@@ -1599,6 +1602,7 @@ object Test2 {
     test83()
     test84()
     test85()
+    test86()
 
     println("done")
   }
