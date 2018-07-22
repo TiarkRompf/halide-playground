@@ -114,7 +114,10 @@ object Test2 {
 
       def reorder(xs: Var*): Unit = {
         assert(true) // todo: sanity checks! must be permutation
-        order = xs.map(_.s).toList.reverse // note: reverse!
+        //order = xs.map(_.s).toList.reverse // note: reverse!
+        val ss = xs.map(_.s).reverse
+        val is = ss.iterator
+        order = order.map(s => if (ss contains s) is.next else s)
       }
 
       def split(x: Var, x_outer: Var, x_inner: Var, factor: Int): Unit = {
