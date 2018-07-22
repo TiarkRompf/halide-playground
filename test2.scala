@@ -119,6 +119,7 @@ object Test2 {
       var order: List[String] = _
 
       var trace = false
+      var computeRoot = false
 
       var computeBounds: List[(String, Env => Int)] = _
       var computeVar: List[(String, (Env,Env) => Int)] = _
@@ -189,6 +190,10 @@ object Test2 {
       }
 
       def trace_stores() = trace = true
+
+      def compute_root(): Unit = {
+        computeRoot = true
+      }
 
       def realize[T:Type](w: Int, h: Int): Buffer[T] = {
         val buf = new Buffer[T](w, h)
@@ -763,6 +768,79 @@ object Test2 {
         consumer.print_loop_nest();
     }
 
+    def test82(): Unit = {
+    // Next we'll examine the next simplest option - computing all
+    // values required in the producer before computing any of the
+    // consumer. We call this schedule "root".
+        val x = Var("x")
+        val y = Var("y")
+        val producer = Func("producer_root")
+        val consumer = Func("consumer_root");
+
+        // The first stage will be some simple pointwise math similar
+        // to our familiar gradient function. The value at position x,
+        // y is the sin of product of x and y.
+        producer(x, y) = sin(x * y);
+        consumer(x, y) = (producer(x, y) +
+                          producer(x, y+1) +
+                          producer(x+1, y) +
+                          producer(x+1, y+1))/4;
+
+        // Tell Halide to evaluate all of producer before any of consumer.
+        producer.compute_root();
+
+        // Turn on tracing.
+        consumer.trace_stores();
+        producer.trace_stores();
+
+        // Compile and run.
+        println("Evaluating producer.compute_root()");
+        consumer.realize[Double](4, 4);
+
+        // Reading the output we can see that:
+        // A) There were stores to producer.
+        // B) They all happened before any stores to consumer.
+
+        // See figures/lesson_08_compute_root.gif for a visualization.
+        // The producer is on the left and the consumer is on the
+        // right. Stores are marked in orange and loads are marked in
+        // blue.
+
+        // Equivalent C:
+
+        /*float result[4][4];
+
+        // Allocate some temporary storage for the producer.
+        float producer_storage[5][5];
+
+        // Compute the producer.
+        for (int y = 0; y < 5; y++) {
+            for (int x = 0; x < 5; x++) {
+                producer_storage[y][x] = sin(x * y);
+            }
+        }
+
+        // Compute the consumer. Skip the prints this time.
+        for (int y = 0; y < 4; y++) {
+            for (int x = 0; x < 4; x++) {
+                result[y][x] = (producer_storage[y][x] +
+                                producer_storage[y+1][x] +
+                                producer_storage[y][x+1] +
+                                producer_storage[y+1][x+1])/4;
+            }
+        }*/
+
+        // Note that consumer was evaluated over a 4x4 box, so Halide
+        // automatically inferred that producer was needed over a 5x5
+        // box. This is the same 'bounds inference' logic we saw in
+        // the previous lesson, where it was used to detect and avoid
+        // out-of-bounds reads from an input image.
+
+        // If we print the loop nest, we'll see something very
+        // similar to the C above.
+        println("Pseudo-code for the schedule:");
+        consumer.print_loop_nest();
+    }
 
 
   def main(args: Array[String]): Unit = {
