@@ -91,8 +91,9 @@ object Test2 {
     case class ToInt(x: Expr) extends Expr
     case class ToByte(x: Expr) extends Expr
 
-    type Env = Map[String,Int]
-    type FEnv = Map[String,Buffer[_]]
+    type Env = Map[String,Int]        // var -> value
+    type BEnv = Map[String,(Int,Int)] // var -> bounds
+    type FEnv = Map[String,Buffer[_]] // function -> buffer
 
     def eval[T](g: Expr)(implicit tpe: Type[T], env: Env, fenv: FEnv): T = g match {
       case Const(c)   => tpe.fromDouble(c)
@@ -134,8 +135,8 @@ object Test2 {
       var computeRoot = false
       var computeAt: Option[(Func,Var)] = None
 
-      var computeBounds: List[(String, Env => Int)] = _
-      var computeVar: List[(String, (Env,Env) => Int)] = _
+      var computeBounds: List[(String, BEnv => Stencil)] = _
+      var computeVar: List[(String, (Env,BEnv) => Int)] = _
 
       var vectorized: List[String] = _
       var unrolled: List[String] = _
@@ -162,12 +163,15 @@ object Test2 {
         order = order.map(s => if (ss contains s) is.next else s)
       }
 
+
+      def dim(s: Stencil) = s._2 - s._1
+
       def split(x: Var, x_outer: Var, x_inner: Var, factor: Int): Unit = {
         assert(true) // todo: sanity checks! outer/inner fresh
         order = order.flatMap(s => if (s == x.s) List(x_outer.s, x_inner.s) else List(s))
-        computeBounds :+= ((x_outer.s, (bounds: Env) => { assert(bounds(x.s) % factor == 0); bounds(x.s) / factor })) // assert evenly divisible!!
-        computeBounds :+= ((x_inner.s, (bounds: Env) => factor))
-        computeVar    ::= ((x.s, (env:Env,bounds:Env) => env(x_outer.s) * factor + env(x_inner.s)))
+        computeBounds :+= ((x_outer.s, (bounds: BEnv) => { assert(dim(bounds(x.s)) % factor == 0); (0, dim(bounds(x.s)) / factor) })) // assert evenly divisible!!
+        computeBounds :+= ((x_inner.s, (bounds: BEnv) => (0, factor)))
+        computeVar    ::= ((x.s, (env:Env,bounds:BEnv) => bounds(x.s)._1 + env(x_outer.s) * factor + env(x_inner.s)))
       }
 
       def fuse(x: Var, y: Var, fused: Var): Unit = {
@@ -175,9 +179,9 @@ object Test2 {
         // Q: which position? need to be adjacent?
         // currently we assume y is outer, and we fuse into that position
         order = order.flatMap(s => if (s == y.s) List(fused.s) else if (s == x.s) List() else List(s))
-        computeBounds :+= ((fused.s, (bounds: Env) => bounds(x.s) * bounds(y.s)))
-        computeVar    ::= ((x.s, (env:Env,bounds:Env) => env(fused.s) % bounds(x.s)))
-        computeVar    ::= ((y.s, (env:Env,bounds:Env) => env(fused.s) / bounds(x.s)))
+        computeBounds :+= ((fused.s, (bounds: BEnv) => (0, dim(bounds(x.s)) * dim(bounds(y.s)))))
+        computeVar    ::= ((x.s, (env:Env,bounds:BEnv) => bounds(x.s)._1 + env(fused.s) % dim(bounds(x.s))))
+        computeVar    ::= ((y.s, (env:Env,bounds:BEnv) => bounds(y.s)._1 + env(fused.s) / dim(bounds(x.s))))
       }
 
       def tile(x: Var, y: Var, x_outer: Var, y_outer: Var, x_inner: Var, y_inner: Var, y_factor: Int, x_factor: Int) = {
@@ -215,9 +219,9 @@ object Test2 {
 
       type Stencil = (Int,Int)
       def stencil(v: Var, e: Expr): Stencil = e match {
-        case `v` => (0,0)
-        case Plus(`v`, Const(a))  => (a.toInt,a.toInt)
-        case Minus(`v`, Const(a)) => (-a.toInt,-a.toInt)
+        case `v` => (0,1)
+        case Plus(`v`, Const(a))  => (a.toInt,a.toInt+1)
+        case Minus(`v`, Const(a)) => (-a.toInt,-a.toInt+1)
       }
       def merge(a: Stencil, b: Stencil): Stencil = (a._1 min b._1, a._2 max b._2)
 
@@ -242,34 +246,74 @@ object Test2 {
         fs.map(_._1).distinct.map(k => (k,gx(k),gy(k)))
       }
 
+      def getInternalStages(vy: Var): List[(Func, Stencil, Stencil)] = {
+        var fs: List[(Func, Stencil, Stencil)] = Nil
+        def traverseFun(f: Func, sx: Stencil, sy: Stencil): Unit = {
+          traverse(f.impl.body) {
+            case Apply(f1@Func(s), List(x,y)) =>  // FIXME: 2
+              val sx1 = stencil(f.impl.x, x)
+              val sy1 = stencil(f.impl.y, y)
+              if (f1.computeAt == Some(this,vy)) {
+                fs ::= (f1,sx1,sy1)
+                traverseFun(f1, sx1, sy1)
+              }
+              // XXX TODO: traverse body if not computeRoot, widen stencil
+            case _ => 
+          }
+        }
+        traverseFun(this, (0,0), (0,0))
+        // XXX
+        val gx = fs.groupBy(_._1).map(p => (p._1, p._2.map(_._2).reduce(merge)))
+        val gy = fs.groupBy(_._1).map(p => (p._1, p._2.map(_._3).reduce(merge)))
+        fs.map(_._1).distinct.map(k => (k,gx(k),gy(k)))
+      }
+
       def realize[T:Type](w: Int, h: Int): Buffer[T] = {
         val fs = getRootStages
         implicit var fenv = Map[String, Buffer[_]]()
-        fs.foreach { p => 
-          val (f,(lx,hx),(ly,hy)) = p
-          assert(lx == 0) // TODO: support negative stencils
-          assert(ly == 0)
-          fenv += (f.s -> f.realize_internal[T](w+hx, h+hy))
+        for ((f,(lx,hx),(ly,hy)) <- fs) {
+          fenv += (f.s -> f.realize_internal[T](lx, ly, w+hx, h+hy))
         }
         fenv(s).asInstanceOf[Buffer[T]]
       }
 
-      def realize_internal[T:Type](w: Int, h: Int)(implicit fenv: FEnv): Buffer[T] = {
-        val buf = new Buffer[T](w, h)
-        var bounds = Map(impl.x.s -> w, impl.y.s -> h)
+      def realize_internal[T:Type](x0: Int, y0: Int, x1: Int, y1: Int)(implicit fenv: FEnv): Buffer[T] = {
+        val buf = new Buffer[T](x0,y0,x1,y1)
+        var bounds = Map(impl.x.s -> (x0,x1), impl.y.s -> (y0,y1))
 
         for ((s,f) <- computeBounds)
           bounds += (s -> f(bounds))
 
-        def loop(vs: List[String], env: Env)(f: Env => Unit): Unit = vs match {
-          case Nil => f(env)
-          case x::vs => for (i <- 0 until bounds(x)) loop(vs, env + (x -> i))(f)
+        def loop(vs: List[String], env: Env, fenv: FEnv)(f: (Env,FEnv) => Unit): Unit = vs match {
+          case Nil => 
+            f(env, fenv)
+
+          case x::vs => 
+            for (i <- bounds(x)._1 until bounds(x)._2) {
+              val env1 = env + (x -> i)
+              implicit var fenv1 = fenv
+              for ((f,(lx,hx),(ly,hy)) <- getInternalStages(Var(x))) {
+                //println("XXX! "+x+" --> "+f)
+
+                // find current ranges of x/y, narrowed by enclosing loops
+                val (llx, hhx) = if (env1 contains impl.x.s) (env1(impl.x.s), env1(impl.x.s)) else (x0,x1)
+                val (lly, hhy) = if (env1 contains impl.y.s) (env1(impl.y.s), env1(impl.y.s)) else (y0,y1)
+
+                fenv1 += (f.s -> f.realize_internal[T](llx+lx, lly+ly, hhx+hx, hhy+hy))
+
+                // TODO: this doesn't work if x/y have been split, because x/y are
+                // put into env only in the innermost loop by computeVar
+              }
+
+              loop(vs, env1, fenv1)(f)
+            }
         }
 
         // todo: vectorize/unroll/parallel are currently no-ops for execution
 
-        loop(order, Map()) { e0 =>
+        loop(order, Map(),fenv) { (e0,fe0) =>
           implicit var env = e0
+          implicit var fenv = fe0
           for ((s,f) <- computeVar)
             env += (s -> f(env,bounds))
           val i = env(impl.x.s)
@@ -289,7 +333,7 @@ object Test2 {
       def print_loop_nest_internal(): Unit = {
         for ((s,_) <- computeBounds)
           println(s"val max_${s} = ...")
-        for (x <- order)
+        for (x <- order) {
           if (unrolled contains x)
             println(s"for ${x} (unrolled):")
           else if (vectorized contains x)
@@ -298,6 +342,13 @@ object Test2 {
             println(s"for ${x} (parallel):")
           else
             println(s"for ${x}:")
+
+          for (p <- getInternalStages(Var(x))) {
+            println(s"sub $p {")
+            p._1.print_loop_nest()
+            println("}")
+          }
+        }
         for ((s,_) <- computeVar)
           println(s"val ${s} = ...")
         println(s"$s(...) = ...")
@@ -325,10 +376,10 @@ object Test2 {
       }
     }
 
-    class Buffer[T:Type](val width: Int, val height: Int) {
-      val data: Array[Array[T]] = Array.ofDim[T](height, width)
-      def apply(x: Int, y: Int) = data(y)(x)
-      def update(x: Int, y: Int, v: T) = data(y)(x) = v
+    class Buffer[T:Type](val x0: Int, val y0: Int, val x1: Int, val y1: Int) {
+      val data: Array[Array[T]] = Array.ofDim[T](y1-y0, x1-x0)
+      def apply(x: Int, y: Int) = data(y-y0)(x-x0)
+      def update(x: Int, y: Int, v: T) = data(y-y0)(x-x0) = v
     }
 
     class Buffer3[T:Type](val width: Int, val height: Int, val channels: Int) {
@@ -388,8 +439,8 @@ object Test2 {
       val output = gradient.realize[Int](800, 600)
 
       // test
-      for (j <- 0 until output.height) {
-          for (i <- 0 until output.width) {
+      for (j <- 0 until 600) {
+          for (i <- 0 until 800) {
               if (output(i, j) != i + j) {
                   println("Something went wrong!\n"+
                          s"Pixel $i, $j was supposed to be ${i+j}, but instead it's ${output(i, j)}")
