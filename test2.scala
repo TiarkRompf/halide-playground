@@ -170,9 +170,20 @@ object Test2 {
       def split(x: Var, x_outer: Var, x_inner: Var, factor: Int): Unit = {
         assert(true) // todo: sanity checks! outer/inner fresh
         order = order.flatMap(s => if (s == x.s) List(x_outer.s, x_inner.s) else List(s))
-        computeBounds :+= ((x_outer.s, (bounds: BEnv) => { assert(dim(bounds(x.s)) % factor == 0); (0, dim(bounds(x.s)) / factor) })) // assert evenly divisible!!
+
+        // for uneven splits, Halide may compute values multiple times -- from the docs:
+        // x_outer runs from 0 to (x_extent + factor - 1)/factor
+        // x_inner runs from 0 to factor
+        // x = min(x_outer * factor, x_extent - factor) + x_inner + x_min
+
+        // even split only version below
+        computeBounds :+= ((x_outer.s, (bounds: BEnv) => (0, (dim(bounds(x.s)) + factor - 1) / factor) ))
         computeBounds :+= ((x_inner.s, (bounds: BEnv) => (0, factor)))
-        computeVar    ::= ((x.s, (env:Env,bounds:BEnv) => bounds(x.s)._1 + env(x_outer.s) * factor + env(x_inner.s)))
+        computeVar    ::= ((x.s, (env:Env,bounds:BEnv) => bounds(x.s)._1 + ((env(x_outer.s) * factor) min (dim(bounds(x.s))- factor)) + env(x_inner.s)))
+
+        // computeBounds :+= ((x_outer.s, (bounds: BEnv) => { assert(dim(bounds(x.s)) % factor == 0); (0, dim(bounds(x.s)) / factor) })) // assert evenly divisible!!
+        // computeBounds :+= ((x_inner.s, (bounds: BEnv) => (0, factor)))
+        // computeVar    ::= ((x.s, (env:Env,bounds:BEnv) => bounds(x.s)._1 + env(x_outer.s) * factor + env(x_inner.s)))
       }
 
       def fuse(x: Var, y: Var, fused: Var): Unit = {
@@ -1593,7 +1604,7 @@ object Test2 {
     test55()
     test56()
     test57()
-    //test58() TODO
+    test58()
     test59()
     test5A()
 
