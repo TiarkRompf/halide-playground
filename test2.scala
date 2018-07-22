@@ -632,6 +632,50 @@ object Test2 {
       gradient.print_loop_nest();
     }
 
+    def test5A(): Unit = {
+      // Putting it all together.
+      val x = Var("x")
+      val y = Var("y")
+
+      val gradient = Func("gradient_fast")
+      gradient(x, y) = x + y
+      //gradient.trace_stores()
+
+      // We'll process 64x64 tiles in parallel.
+      val x_outer = Var("x_outer")
+      val x_inner = Var("x_inner")
+      val y_outer = Var("y_outer")
+      val y_inner = Var("y_inner")
+      val tile_index = Var("tile_index")
+      gradient.tile(x, y, x_outer, y_outer, x_inner, y_inner, 64, 64)
+      gradient.fuse(x_outer, y_outer, tile_index)
+      gradient.parallel(tile_index)
+
+      // We'll compute two scanlines at once while we walk across
+      // each tile. We'll also vectorize in x. The easiest way to
+      // express this is to recursively tile again within each tile
+      // into 4x2 subtiles, then vectorize the subtiles across x and
+      // unroll them across y:
+      val x_inner_outer = Var("x_inner_outer")
+      val y_inner_outer = Var("y_inner_outer")
+      val x_vectors = Var("x_vectors")
+      val y_pairs = Var("y_pairs")
+      gradient.tile(x_inner, y_inner, x_inner_outer, y_inner_outer, x_vectors, y_pairs, 4, 2)
+      gradient.vectorize(x_vectors)
+      gradient.unroll(y_pairs)
+
+
+      println("Evaluating gradient tiles in parallel");
+      //val output = gradient.realize[Int](350,250); Halide tutorial used non-multiple size
+      //val output = gradient.realize[Int](320,256);
+
+      println("Checking Halide result against equivalent C...");
+      println("TODO!!")
+
+      println("Pseudo-code for the schedule:");
+      gradient.print_loop_nest();
+    }
+
   def main(args: Array[String]): Unit = {
     test1()
     //test2()
@@ -644,6 +688,7 @@ object Test2 {
     test57()
     //test58() TODO
     test59()
+    test5A()
 
     println("done")
   }
