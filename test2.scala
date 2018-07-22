@@ -134,6 +134,7 @@ object Test2 {
       var trace = false
       var computeRoot = false
       var computeAt: Option[(Func,Var)] = None
+      var storeRoot = false
 
       var computeBounds: List[(String, BEnv => Stencil)] = _
       var computeVar: List[(String, (Env,BEnv) => Int)] = _
@@ -216,6 +217,10 @@ object Test2 {
         computeAt = Some((f,y))
       }
 
+      def store_root(): Unit = {
+        storeRoot = true
+      }
+
 
       type Stencil = (Int,Int)
       def stencil(v: Var, e: Expr): Stencil = e match {
@@ -233,7 +238,7 @@ object Test2 {
             case Apply(f1@Func(s), List(x,y)) =>  // FIXME: 2
               val sx1 = stencil(f.impl.x, x)
               val sy1 = stencil(f.impl.y, y)
-              if (f1.computeRoot)
+              if (f1.computeRoot || f1.storeRoot)
                 traverseFun(f1, sx1, sy1)
               // XXX TODO: traverse body if not computeRoot, widen stencil
             case _ => 
@@ -272,13 +277,20 @@ object Test2 {
         val fs = getRootStages
         implicit var fenv = Map[String, Buffer[_]]()
         for ((f,(lx,hx),(ly,hy)) <- fs) {
-          fenv += (f.s -> f.realize_internal[T](lx, ly, w+hx, h+hy))
+          val buf = new Buffer[T](lx, ly, w+hx, h+hy)
+          if (f.computeRoot || f == this)
+            f.realize_internal[T](lx, ly, w+hx, h+hy, buf)
+          fenv += (f.s -> buf)
         }
         fenv(s).asInstanceOf[Buffer[T]]
       }
 
       def realize_internal[T:Type](x0: Int, y0: Int, x1: Int, y1: Int)(implicit fenv: FEnv): Buffer[T] = {
         val buf = new Buffer[T](x0,y0,x1,y1)
+        realize_internal(x0,y0,x1,y1,buf)
+      }
+
+      def realize_internal[T:Type](x0: Int, y0: Int, x1: Int, y1: Int, buf: Buffer[T])(implicit fenv: FEnv): Buffer[T] = {
         var bounds = Map(impl.x.s -> (x0,x1), impl.y.s -> (y0,y1))
 
         for ((s,f) <- computeBounds)
@@ -295,14 +307,44 @@ object Test2 {
               for ((f,(lx,hx),(ly,hy)) <- getInternalStages(Var(x))) {
                 //println("XXX! "+x+" --> "+f)
 
-                // find current ranges of x/y, narrowed by enclosing loops
-                val (llx, hhx) = if (env1 contains impl.x.s) (env1(impl.x.s), env1(impl.x.s)) else (x0,x1)
-                val (lly, hhy) = if (env1 contains impl.y.s) (env1(impl.y.s), env1(impl.y.s)) else (y0,y1)
-
-                fenv1 += (f.s -> f.realize_internal[T](llx+lx, lly+ly, hhx+hx, hhy+hy))
-
-                // TODO: this doesn't work if x/y have been split, because x/y are
+                // FIXME: this doesn't work if x/y have been split, because x/y are
                 // put into env only in the innermost loop by computeVar
+
+                if (!f.storeRoot) {
+                  // we're allocating a fresh buffer
+
+                  // find current ranges of x/y, narrowed by enclosing loops
+                  val (llx, hhx) = if (env1 contains impl.x.s) (env1(impl.x.s), env1(impl.x.s)) else (x0,x1)
+                  val (lly, hhy) = if (env1 contains impl.y.s) (env1(impl.y.s), env1(impl.y.s)) else (y0,y1)
+
+                  fenv1 += (f.s -> f.realize_internal[T](llx+lx, lly+ly, hhx+hx, hhy+hy))
+                } else {
+                  // if store_root, then we already have a buffer. reuse scanlines already computed.
+                  val buf = fenv1(f.s).asInstanceOf[Buffer[T]]
+
+                  // find current ranges of x/y, narrowed by enclosing loops
+                  val (llx, hhx) = if (env1 contains impl.x.s) { 
+                    if (env1(impl.x.s) == 0) 
+                      (env1(impl.x.s)+lx, env1(impl.x.s)+hx)
+                    else {
+                      // assert previous bounds ...
+                      (env1(impl.x.s)+hx-1, env1(impl.x.s)+hx) // compute only one new scanline! 
+                    }
+                  } else (x0+lx,x1+hx)
+
+                  val (lly, hhy) = if (env1 contains impl.y.s) {
+                    if (env1(impl.y.s) == 0) 
+                      (env1(impl.y.s)+ly, env1(impl.y.s)+hy)
+                    else {
+                      // assert previous bounds ...
+                      (env1(impl.y.s)+hy-1, env1(impl.y.s)+hy) // compute only one new scanline!
+                    }
+                  } else (y0+ly,y1+hy)
+
+                  f.realize_internal[T](llx, lly, hhx, hhy, buf)
+
+                  // TODO: use a circular buffer! (discard old data...)
+                }
               }
 
               loop(vs, env1, fenv1)(f)
@@ -1073,6 +1115,128 @@ object Test2 {
         // - Calls to sin: 40
     }
 
+    def test84(): Unit = {
+    // We could also say producer.compute_at(consumer, x), but this
+    // would be very similar to full inlining (the default
+    // schedule). Instead let's distinguish between the loop level at
+    // which we allocate storage for producer, and the loop level at
+    // which we actually compute it. This unlocks a few optimizations.
+
+        val x = Var("x")
+        val y = Var("y")
+        val producer = Func("producer_y")
+        val consumer = Func("consumer_y");
+        producer(x, y) = sin(x * y);
+        consumer(x, y) = (producer(x, y) +
+                          producer(x, y+1) +
+                          producer(x+1, y) +
+                          producer(x+1, y+1))/4;
+
+
+        // Tell Halide to make a buffer to store all of producer at
+        // the outermost level:
+        producer.store_root();
+        // ... but compute it as needed per y coordinate of the
+        // consumer.
+        producer.compute_at(consumer, y);
+
+        producer.trace_stores();
+        consumer.trace_stores();
+
+        println("Evaluating producer.store_root().compute_at(consumer, y)");
+        consumer.realize[Double](4, 4);
+
+        // See figures/lesson_08_store_root_compute_y.gif for a
+        // visualization.
+
+        // Reading the log or looking at the figure you should see
+        // that producer and consumer again alternate on a
+        // per-scanline basis. It computes a 5x2 box of the producer
+        // to satisfy the first scanline of the consumer, but after
+        // that it only computes a 5x1 box of the output for each new
+        // scanline of the consumer!
+        //
+        // Halide has detected that for all scanlines except for the
+        // first, it can reuse the values already sitting in the
+        // buffer we've allocated for producer. Let's look at the
+        // equivalent C:
+
+        /*float result[4][4];
+
+        // producer.store_root() implies that storage goes here:
+        float producer_storage[5][5];
+
+        // There's an outer loop over scanlines of consumer:
+        for (int y = 0; y < 4; y++) {
+
+            // Compute enough of the producer to satisfy this scanline
+            // of the consumer.
+            for (int py = y; py < y + 2; py++) {
+
+                // Skip over rows of producer that we've already
+                // computed in a previous iteration.
+                if (y > 0 && py == y) continue;
+
+                for (int px = 0; px < 5; px++) {
+                    producer_storage[py][px] = sin(px * py);
+                }
+            }
+
+            // Compute a scanline of the consumer.
+            for (int x = 0; x < 4; x++) {
+                result[y][x] = (producer_storage[y][x] +
+                                producer_storage[y+1][x] +
+                                producer_storage[y][x+1] +
+                                producer_storage[y+1][x+1])/4;
+            }
+        }*/
+
+        println("Pseudo-code for the schedule:");
+        consumer.print_loop_nest();
+
+        // The performance characteristics of this strategy are pretty
+        // good! The numbers are similar compute_root, except locality
+        // is better. We're doing the minimum number of sin calls,
+        // and we load values soon after they are stored, so we're
+        // probably making good use of the cache:
+
+        // producer.store_root().compute_at(consumer, y):
+        // - Temporary memory allocated: 10 floats
+        // - Loads: 64
+        // - Stores: 39
+        // - Calls to sin: 25
+
+        // Note that my claimed amount of memory allocated doesn't
+        // match the reference C code. Halide is performing one more
+        // optimization under the hood. It folds the storage for the
+        // producer down into a circular buffer of two
+        // scanlines. Equivalent C would actually look like this:
+
+        /*{
+            // Actually store 2 scanlines instead of 5
+            float producer_storage[2][5];
+            for (int y = 0; y < 4; y++) {
+                for (int py = y; py < y + 2; py++) {
+                    if (y > 0 && py == y) continue;
+                    for (int px = 0; px < 5; px++) {
+                        // Stores to producer_storage have their y coordinate bit-masked.
+                        producer_storage[py & 1][px] = sin(px * py);
+                    }
+                }
+
+                // Compute a scanline of the consumer.
+                for (int x = 0; x < 4; x++) {
+                    // Loads from producer_storage have their y coordinate bit-masked.
+                    result[y][x] = (producer_storage[y & 1][x] +
+                                    producer_storage[(y+1) & 1][x] +
+                                    producer_storage[y & 1][x+1] +
+                                    producer_storage[(y+1) & 1][x+1])/4;
+                }
+            }
+        }*/
+    }
+
+
 
   def main(args: Array[String]): Unit = {
     test1()
@@ -1093,6 +1257,7 @@ object Test2 {
     test81()
     test82()
     test83()
+    test84()
 
     println("done")
   }
