@@ -214,19 +214,15 @@ object Test2 {
 
 
       type Stencil = (Int,Int)
+      def stencil(v: Var, e: Expr): Stencil = e match {
+        case `v` => (0,0)
+        case Plus(`v`, Const(a))  => (a.toInt,a.toInt)
+        case Minus(`v`, Const(a)) => (-a.toInt,-a.toInt)
+      }
+      def merge(a: Stencil, b: Stencil): Stencil = (a._1 min b._1, a._2 max b._2)
 
-      def getAllStages: List[(Func, Stencil, Stencil)] = {
-
+      def getRootStages: List[(Func, Stencil, Stencil)] = {
         var fs: List[(Func, Stencil, Stencil)] = Nil
-
-        def stencil(v: Var, e: Expr): Stencil = e match {
-          case `v` => (0,0)
-          case Plus(`v`, Const(a))  => (a.toInt,a.toInt)
-          case Minus(`v`, Const(a)) => (-a.toInt,-a.toInt)
-        }
-
-        def merge(a: Stencil, b: Stencil): Stencil = (a._1 min b._1, a._2 max b._2)
-
         def traverseFun(f: Func, sx: Stencil, sy: Stencil): Unit = {
           fs ::= (f,sx,sy)
           traverse(f.impl.body) {
@@ -247,7 +243,7 @@ object Test2 {
       }
 
       def realize[T:Type](w: Int, h: Int): Buffer[T] = {
-        val fs = getAllStages
+        val fs = getRootStages
         implicit var fenv = Map[String, Buffer[_]]()
         fs.foreach { p => 
           val (f,(lx,hx),(ly,hy)) = p
@@ -285,7 +281,7 @@ object Test2 {
       }
 
       def print_loop_nest(): Unit = {
-        val fs = getAllStages
+        val fs = getRootStages
         println("stages: " + fs.mkString(", "))
         fs.foreach(_._1.print_loop_nest_internal)
       }
