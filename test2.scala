@@ -132,6 +132,7 @@ object Test2 {
 
       var trace = false
       var computeRoot = false
+      var computeAt: Option[(Func,Var)] = None
 
       var computeBounds: List[(String, Env => Int)] = _
       var computeVar: List[(String, (Env,Env) => Int)] = _
@@ -206,6 +207,11 @@ object Test2 {
       def compute_root(): Unit = {
         computeRoot = true
       }
+
+      def compute_at(f: Func, y: Var): Unit = {
+        computeAt = Some((f,y))
+      }
+
 
       type Stencil = (Int,Int)
 
@@ -906,6 +912,120 @@ object Test2 {
         consumer.print_loop_nest();
     }
 
+    // Let's compare the two approaches above from a performance
+    // perspective.
+
+    // Full inlining (the default schedule):
+    // - Temporary memory allocated: 0
+    // - Loads: 0
+    // - Stores: 16
+    // - Calls to sin: 64
+
+    // producer.compute_root():
+    // - Temporary memory allocated: 25 floats
+    // - Loads: 64
+    // - Stores: 41
+    // - Calls to sin: 25
+
+    // There's a trade-off here. Full inlining used minimal temporary
+    // memory and memory bandwidth, but did a whole bunch of redundant
+    // expensive math (calling sin). It evaluated most points in
+    // 'producer' four times. The second schedule,
+    // producer.compute_root(), did the mimimum number of calls to
+    // sin, but used more temporary memory and more memory bandwidth.
+
+    // In any given situation the correct choice can be difficult to
+    // make. If you're memory-bandwidth limited, or don't have much
+    // memory (e.g. because you're running on an old cell-phone), then
+    // it can make sense to do redundant math. On the other hand, sin
+    // is expensive, so if you're compute-limited then fewer calls to
+    // sin will make your program faster. Adding vectorization or
+    // multi-core parallelism tilts the scales in favor of doing
+    // redundant work, because firing up multiple cpu cores increases
+    // the amount of math you can do per second, but doesn't increase
+    // your system memory bandwidth or capacity.
+
+    def test83(): Unit = {
+    // We can make choices in between full inlining and
+    // compute_root. Next we'll alternate between computing the
+    // producer and consumer on a per-scanline basis:
+
+        // Start with the same function definitions:
+        val x = Var("x")
+        val y = Var("y")
+        val producer = Func("producer_y")
+        val consumer = Func("consumer_y");
+        producer(x, y) = sin(x * y);
+        consumer(x, y) = (producer(x, y) +
+                          producer(x, y+1) +
+                          producer(x+1, y) +
+                          producer(x+1, y+1))/4;
+
+        // Tell Halide to evaluate producer as needed per y coordinate
+        // of the consumer:
+        producer.compute_at(consumer, y);
+
+        // This places the code that computes the producer just
+        // *inside* the consumer's for loop over y, as in the
+        // equivalent C below.
+
+        // Turn on tracing.
+        producer.trace_stores();
+        consumer.trace_stores();
+
+        // Compile and run.
+        println("Evaluating producer.compute_at(consumer, y)");
+        consumer.realize[Double](4, 4);
+
+        // See figures/lesson_08_compute_y.gif for a visualization.
+
+        // Reading the log or looking at the figure you should see
+        // that producer and consumer alternate on a per-scanline
+        // basis. Let's look at the equivalent C:
+
+        /*float result[4][4];
+
+        // There's an outer loop over scanlines of consumer:
+        for (int y = 0; y < 4; y++) {
+
+            // Allocate space and compute enough of the producer to
+            // satisfy this single scanline of the consumer. This
+            // means a 5x2 box of the producer.
+            float producer_storage[2][5];
+            for (int py = y; py < y + 2; py++) {
+                for (int px = 0; px < 5; px++) {
+                    producer_storage[py-y][px] = sin(px * py);
+                }
+            }
+
+            // Compute a scanline of the consumer.
+            for (int x = 0; x < 4; x++) {
+                result[y][x] = (producer_storage[0][x] +
+                                producer_storage[1][x] +
+                                producer_storage[0][x+1] +
+                                producer_storage[1][x+1])/4;
+            }
+        }*/
+
+        // Again, if we print the loop nest, we'll see something very
+        // similar to the C above.
+        println("Pseudo-code for the schedule:");
+        consumer.print_loop_nest();
+
+        // The performance characteristics of this strategy are in
+        // between inlining and compute root. We still allocate some
+        // temporary memory, but less that compute_root, and with
+        // better locality (we load from it soon after writing to it,
+        // so for larger images, values should still be in cache). We
+        // still do some redundant work, but less than full inlining:
+
+        // producer.compute_at(consumer, y):
+        // - Temporary memory allocated: 10 floats
+        // - Loads: 64
+        // - Stores: 56
+        // - Calls to sin: 40
+    }
+
 
   def main(args: Array[String]): Unit = {
     test1()
@@ -925,6 +1045,7 @@ object Test2 {
 
     test81()
     test82()
+    test83()
 
     println("done")
   }
