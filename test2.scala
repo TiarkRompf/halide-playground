@@ -12,8 +12,11 @@ object Test2 {
       def fromByte(d: Byte): T
       def fromInt(d: Int): T
       def fromDouble(d: Double): T
+      def sin(a: T): T
       def plus(a: T, b: T): T
+      def minus(a: T, b: T): T
       def times(a: T, b: T): T
+      def div(a: T, b: T): T
       def min(a: T, b: T): T
     }
 
@@ -22,8 +25,11 @@ object Test2 {
       def fromByte(d: Byte) = d
       def fromInt(d: Int) = d
       def fromDouble(d: Double) = d.toInt
+      def sin(a: Int) = math.sin(a).toInt
       def plus(a: Int, b: Int) = a + b
+      def minus(a: Int, b: Int) = a - b
       def times(a: Int, b: Int) = a * b
+      def div(a: Int, b: Int) = a / b
       def min(a: Int, b: Int) = a min b
     }
 
@@ -32,8 +38,11 @@ object Test2 {
       def fromByte(d: Byte) = d
       def fromInt(d: Int) = d
       def fromDouble(d: Double) = d
+      def sin(d: Double) = math.sin(d)
       def plus(a: Double, b: Double) = a + b
+      def minus(a: Double, b: Double) = a - b
       def times(a: Double, b: Double) = a * b
+      def div(a: Double, b: Double) = a / b
       def min(a: Double, b: Double) = a min b
     }
 
@@ -42,8 +51,11 @@ object Test2 {
       def fromByte(d: Byte) = d
       def fromInt(d: Int) = d.toByte
       def fromDouble(d: Double) = d.toByte
+      def sin(d: Byte) = math.sin(d).toByte
       def plus(a: Byte, b: Byte) = (a + b).toByte
+      def minus(a: Byte, b: Byte) = (a + b).toByte
       def times(a: Byte, b: Byte) = (a * b).toByte
+      def div(a: Byte, b: Byte) = (a * b).toByte
       def min(a: Byte, b: Byte) = (a min b).toByte
     }
 
@@ -53,13 +65,16 @@ object Test2 {
 
     abstract class Expr {
       def +(that: Expr): Expr = Plus(this,that)
+      def -(that: Expr): Expr = Minus(this,that)
       def *(that: Expr): Expr = Times(this,that)
+      def /(that: Expr): Expr = Div(this,that)
       def toDouble: Expr = ToDouble(this)
       def toInt: Expr = ToInt(this)
       def toByte: Expr = ToByte(this)
     }
 
     def min(a: Expr, b: Expr): Expr = Min(a,b)
+    def sin(a: Expr): Expr = Sin(a)
 
     case class Var(s: String) extends Expr { override def toString = s }
     case class Apply(x: Func, y: List[Expr]) extends Expr
@@ -67,21 +82,33 @@ object Test2 {
 
     case class Const(x: Double) extends Expr
     case class Plus(x: Expr, y: Expr) extends Expr
+    case class Minus(x: Expr, y: Expr) extends Expr
     case class Times(x: Expr, y: Expr) extends Expr
+    case class Div(x: Expr, y: Expr) extends Expr
     case class Min(x: Expr, y: Expr) extends Expr
+    case class Sin(x: Expr) extends Expr
     case class ToDouble(x: Expr) extends Expr
     case class ToInt(x: Expr) extends Expr
     case class ToByte(x: Expr) extends Expr
+
+    type Env = Map[String,Int]
 
     def eval[T](g: Expr)(implicit tpe: Type[T], env: Map[String,Int]): T = g match {
       case Const(c)   => tpe.fromDouble(c)
       case Var(s)     => tpe.fromInt(env(s))
       case Plus(a,b)  => tpe.plus(eval[T](a), eval[T](b))
+      case Minus(a,b) => tpe.minus(eval[T](a), eval[T](b))
       case Times(a,b) => tpe.times(eval[T](a), eval[T](b))
+      case Div(a,b)   => tpe.div(eval[T](a), eval[T](b))
       case Min(a,b)   => tpe.min(eval[T](a), eval[T](b))
+      case Sin(a)     => tpe.sin(eval[T](a))
       case ToDouble(a)=> tpe.fromDouble(eval[Double](a))
       case ToInt(a)   => tpe.fromInt(eval[Int](a))
       case ToByte(a)  => tpe.fromByte(eval[Byte](a))
+      case Apply(f,as)=> 
+        val List(x,y) = as.map(eval[Int]) // FIXME: only 2
+        val env1: Env = Map(f.impl.x.s -> x, f.impl.y.s -> y)
+        eval[T](f.impl.body)(implicitly, env1)
       case Apply3(f,a,b,c) => tpe.fromInt(f(eval[Int](a), eval[Int](b), eval[Int](c)).asInstanceOf[UByte]) // assume byte
     }
 
@@ -93,14 +120,15 @@ object Test2 {
 
       var trace = false
 
-      type Env = Map[String,Int]
-
       var computeBounds: List[(String, Env => Int)] = _
       var computeVar: List[(String, (Env,Env) => Int)] = _
 
       var vectorized: List[String] = _
       var unrolled: List[String] = _
       var parallel: List[String] = _
+
+      def apply(es: Expr*): Expr = 
+        Apply(this, es.toList)
 
       def update(x: Var, y: Var, body: Expr): Unit = {
         impl = FuncInternal(x,y,body)
@@ -160,6 +188,8 @@ object Test2 {
         parallel :+= x.s
       }
 
+      def trace_stores() = trace = true
+
       def realize[T:Type](w: Int, h: Int): Buffer[T] = {
         val buf = new Buffer[T](w, h)
         var bounds = Map(impl.x.s -> w, impl.y.s -> h)
@@ -185,8 +215,6 @@ object Test2 {
         }
         buf
       }
-
-      def trace_stores() = trace = true
 
       def print_loop_nest(): Unit = {
         for ((s,_) <- computeBounds)
@@ -676,9 +704,72 @@ object Test2 {
       gradient.print_loop_nest();
     }
 
+    def test81(): Unit = {
+    // Let's examine various scheduling options for a simple two stage
+    // pipeline. We'll start with the default schedule:
+        val x = Var("x")
+        val y = Var("y")
+        val producer = Func("producer_default")
+        val consumer = Func("consumer_default");
+
+        // The first stage will be some simple pointwise math similar
+        // to our familiar gradient function. The value at position x,
+        // y is the sin of product of x and y.
+        producer(x, y) = sin(x * y);
+
+        // Now we'll add a second stage which averages together multiple
+        // points in the first stage.
+        consumer(x, y) = (producer(x, y) +
+                          producer(x, y+1) +
+                          producer(x+1, y) +
+                          producer(x+1, y+1))/4;
+
+        // We'll turn on tracing for both functions.
+        consumer.trace_stores();
+        producer.trace_stores();
+
+        // And evaluate it over a 4x4 box.
+        println("Evaluating producer-consumer pipeline with default schedule");
+        consumer.realize[Double](4, 4);
+
+        // There were no messages about computing values of the
+        // producer. This is because the default schedule fully
+        // inlines 'producer' into 'consumer'. It is as if we had
+        // written the following code instead:
+
+        // consumer(x, y) = (sin(x * y) +
+        //                   sin(x * (y + 1)) +
+        //                   sin((x + 1) * y) +
+        //                   sin((x + 1) * (y + 1))/4);
+
+        // All calls to 'producer' have been replaced with the body of
+        // 'producer', with the arguments substituted in for the
+        // variables.
+
+        // The equivalent C code is:
+        /*float result[4][4];
+        for (int y = 0; y < 4; y++) {
+            for (int x = 0; x < 4; x++) {
+                result[y][x] = (sin(x*y) +
+                                sin(x*(y+1)) +
+                                sin((x+1)*y) +
+                                sin((x+1)*(y+1)))/4;
+            }
+        }*/
+
+        // If we look at the loop nest, the producer doesn't appear
+        // at all. It has been inlined into the consumer.
+        println("Pseudo-code for the schedule:");
+        consumer.print_loop_nest();
+    }
+
+
+
   def main(args: Array[String]): Unit = {
     test1()
+
     //test2()
+
     test51()
     test52()
     test53()
@@ -689,6 +780,8 @@ object Test2 {
     //test58() TODO
     test59()
     test5A()
+
+    test81()
 
     println("done")
   }
