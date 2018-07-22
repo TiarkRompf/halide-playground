@@ -1124,8 +1124,8 @@ object Test2 {
 
         val x = Var("x")
         val y = Var("y")
-        val producer = Func("producer_y")
-        val consumer = Func("consumer_y");
+        val producer = Func("producer_root_y")
+        val consumer = Func("consumer_root_y");
         producer(x, y) = sin(x * y);
         consumer(x, y) = (producer(x, y) +
                           producer(x, y+1) +
@@ -1236,11 +1236,14 @@ object Test2 {
         }*/
     }
 
-/*
+    def test85(): Unit = {
     // We can do even better, by leaving the storage outermost, but
     // moving the computation into the innermost loop:
-    {
-        Func producer("producer_root_x"), consumer("consumer_root_x");
+
+        val x = Var("x")
+        val y = Var("y")
+        val producer = Func("producer_root_x")
+        val consumer = Func("consumer_root_x");
         producer(x, y) = sin(x * y);
         consumer(x, y) = (producer(x, y) +
                           producer(x, y+1) +
@@ -1249,13 +1252,14 @@ object Test2 {
 
 
         // Store outermost, compute innermost.
-        producer.store_root().compute_at(consumer, x);
+        producer.store_root()
+        producer.compute_at(consumer, x);
 
         producer.trace_stores();
         consumer.trace_stores();
 
-        printf("\nEvaluating producer.store_root().compute_at(consumer, x)\n");
-        consumer.realize(4, 4);
+        println("Evaluating producer.store_root().compute_at(consumer, x)");
+        consumer.realize[Double](4, 4);
 
         // See figures/lesson_08_store_root_compute_x.gif for a
         // visualization.
@@ -1263,7 +1267,7 @@ object Test2 {
         // You should see that producer and consumer now alternate on
         // a per-pixel basis. Here's the equivalent C:
 
-        float result[4][4];
+        /*float result[4][4];
 
         // producer.store_root() implies that storage goes here, but
         // we can fold it down into a circular buffer of two
@@ -1290,11 +1294,10 @@ object Test2 {
                                 producer_storage[y & 1][x+1] +
                                 producer_storage[(y+1) & 1][x+1])/4;
             }
-        }
+        }*/
 
-        printf("Pseudo-code for the schedule:\n");
+        println("Pseudo-code for the schedule:");
         consumer.print_loop_nest();
-        printf("\n");
 
         // The performance characteristics of this strategy are the
         // best so far. One of the four values of the producer we need
@@ -1307,6 +1310,7 @@ object Test2 {
         // - Calls to sin: 40
     }
 
+/*
     // So what's the catch? Why not always do
     // producer.store_root().compute_at(consumer, x) for this type of
     // code?
@@ -1594,6 +1598,7 @@ object Test2 {
     test82()
     test83()
     test84()
+    test85()
 
     println("done")
   }
