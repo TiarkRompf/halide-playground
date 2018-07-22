@@ -100,6 +100,7 @@ object Test2 {
 
       var vectorized: List[String] = _
       var unrolled: List[String] = _
+      var parallel: List[String] = _
 
       def update(x: Var, y: Var, body: Expr): Unit = {
         impl = FuncInternal(x,y,body)
@@ -108,6 +109,7 @@ object Test2 {
         computeVar = Nil
         vectorized = Nil
         unrolled = Nil
+        parallel = Nil
       }
 
       def reorder(xs: Var*): Unit = {
@@ -120,7 +122,7 @@ object Test2 {
         order = order.flatMap(s => if (s == x.s) List(x_outer.s, x_inner.s) else List(s))
         computeBounds :+= ((x_outer.s, (bounds: Env) => { assert(bounds(x.s) % factor == 0); bounds(x.s) / factor })) // assert evenly divisible!!
         computeBounds :+= ((x_inner.s, (bounds: Env) => factor))
-        computeVar    :+= ((x.s, (env:Env,bounds:Env) => env(x_outer.s) * factor + env(x_inner.s)))
+        computeVar    ::= ((x.s, (env:Env,bounds:Env) => env(x_outer.s) * factor + env(x_inner.s)))
       }
 
       def fuse(x: Var, y: Var, fused: Var): Unit = {
@@ -129,8 +131,14 @@ object Test2 {
         // currently we assume y is outer, and we fuse into that position
         order = order.flatMap(s => if (s == y.s) List(fused.s) else if (s == x.s) List() else List(s))
         computeBounds :+= ((fused.s, (bounds: Env) => bounds(x.s) * bounds(y.s)))
-        computeVar    :+= ((y.s, (env:Env,bounds:Env) => env(fused.s) / bounds(x.s)))
-        computeVar    :+= ((x.s, (env:Env,bounds:Env) => env(fused.s) % bounds(x.s)))
+        computeVar    ::= ((x.s, (env:Env,bounds:Env) => env(fused.s) % bounds(x.s)))
+        computeVar    ::= ((y.s, (env:Env,bounds:Env) => env(fused.s) / bounds(x.s)))
+      }
+
+      def tile(x: Var, y: Var, x_outer: Var, y_outer: Var, x_inner: Var, y_inner: Var, y_factor: Int, x_factor: Int) = {
+        split(x, x_outer, x_inner, x_factor)
+        split(y, y_outer, y_inner, y_factor)
+        reorder(x_inner, y_inner, x_outer, y_outer)
       }
 
       def vectorize(x: Var): Unit = {
@@ -142,6 +150,11 @@ object Test2 {
         assert(true) // what to check?
         // currently a no-op
         unrolled :+= x.s
+      }
+      def parallel(x: Var): Unit = {
+        assert(true) // what to check?
+        // currently a no-op
+        parallel :+= x.s
       }
 
       def realize[T:Type](w: Int, h: Int): Buffer[T] = {
@@ -180,6 +193,8 @@ object Test2 {
             println(s"for ${x} (unrolled):")
           else if (vectorized contains x)
             println(s"for ${x} (vectorized):")
+          else if (parallel contains x)
+            println(s"for ${x} (parallel):")
           else
             println(s"for ${x}:")
         for ((s,_) <- computeVar)
@@ -540,6 +555,80 @@ object Test2 {
       gradient.print_loop_nest();
     }
 
+    def test58(): Unit = { // XXX TODO
+      // Splitting by factors that don't divide the extent.
+      val x = Var("x")
+      val y = Var("y")
+
+      val gradient = Func("gradient_split")
+      gradient(x, y) = x + y
+      gradient.trace_stores()
+
+      val x_outer = Var("x_outer")
+      val x_inner = Var("x_inner")
+      gradient.split(x, x_outer, x_inner, 3)
+
+      println("Evaluating gradient over a 7x2 box with x split by three");
+      val output = gradient.realize[Int](7, 2);
+
+      println("Equivalent C:");
+      for (y <- 0 until 2) {
+        for (x_outer <- 0 until 3) {   // Now runs from 0 to 2
+          for (x_inner <- 0 until 3) { // split factor 2
+              var x = x_outer * 3 + x_inner;
+              // Before we add x_inner, make sure we don't
+              // evaluate points outside of the 7x2 box. We'll
+              // clamp x to be at most 4 (7 minus the split
+              // factor).
+              if (x > 4) x = 4;
+              x += x_inner;
+              println(s"Evaluating at x = $x, y = $y: ${x + y}");
+          }
+        }
+      }
+
+      println("Pseudo-code for the schedule:");
+      gradient.print_loop_nest();
+    }
+
+    def test59(): Unit = {
+      // Fusing, tiling, and parallelizing.
+      val x = Var("x")
+      val y = Var("y")
+
+      val gradient = Func("gradient_fused_tiles")
+      gradient(x, y) = x + y
+      gradient.trace_stores()
+
+      val x_outer = Var("x_outer")
+      val x_inner = Var("x_inner")
+      val y_outer = Var("y_outer")
+      val y_inner = Var("y_inner")
+      val tile_index = Var("tile_index")
+      gradient.tile(x, y, x_outer, y_outer, x_inner, y_inner, 4, 4)
+      gradient.fuse(x_outer, y_outer, tile_index)
+      gradient.parallel(tile_index)
+
+      println("Evaluating gradient tiles in parallel");
+      val output = gradient.realize[Int](8,8);
+
+      println("Equivalent (serial) C:");
+      for (tile_index <- 0 until 4) { // should be parallel
+        val y_outer = tile_index / 2
+        val x_outer = tile_index % 2
+        for (y_inner <- 0 until 4) {
+          for (x_inner <- 0 until 4) {
+              var y = y_outer * 4 + y_inner;
+              var x = x_outer * 4 + x_inner;
+              println(s"Evaluating at x = $x, y = $y: ${x + y}");
+          }
+        }
+      }
+
+      println("Pseudo-code for the schedule:");
+      gradient.print_loop_nest();
+    }
+
   def main(args: Array[String]): Unit = {
     test1()
     //test2()
@@ -550,6 +639,8 @@ object Test2 {
     test55()
     test56()
     test57()
+    //test58() TODO
+    test59()
 
     println("done")
   }
