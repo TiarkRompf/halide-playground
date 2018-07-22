@@ -92,8 +92,9 @@ object Test2 {
     case class ToByte(x: Expr) extends Expr
 
     type Env = Map[String,Int]
+    type FEnv = Map[String,Buffer[_]]
 
-    def eval[T](g: Expr)(implicit tpe: Type[T], env: Map[String,Int]): T = g match {
+    def eval[T](g: Expr)(implicit tpe: Type[T], env: Env, fenv: FEnv): T = g match {
       case Const(c)   => tpe.fromDouble(c)
       case Var(s)     => tpe.fromInt(env(s))
       case Plus(a,b)  => tpe.plus(eval[T](a), eval[T](b))
@@ -107,11 +108,17 @@ object Test2 {
       case ToByte(a)  => tpe.fromByte(eval[Byte](a))
       case Apply(f,as)=> 
         val List(x,y) = as.map(eval[Int]) // FIXME: only 2
-        val env1: Env = Map(f.impl.x.s -> x, f.impl.y.s -> y)
-        eval[T](f.impl.body)(implicitly, env1)
+        if (f.computeRoot) {
+          val buf = fenv(f.s).asInstanceOf[Buffer[T]]
+          buf(x,y)
+        } else {
+          val env1: Env = Map(f.impl.x.s -> x, f.impl.y.s -> y)
+          eval[T](f.impl.body)(tpe, env1, fenv)
+        }
       case Apply3(f,a,b,c) => tpe.fromInt(f(eval[Int](a), eval[Int](b), eval[Int](c)).asInstanceOf[UByte]) // assume byte
     }
 
+    // generic pre-order traversal
     def traverse(x: Any)(f: Any => Unit): Unit = { f(x); x match {
       case x: Product => x.productIterator.foreach(x => traverse(x)(f))
       case _ =>
@@ -200,33 +207,59 @@ object Test2 {
         computeRoot = true
       }
 
-      def getAllStages: List[Func] = {
-        var fs: List[Func] = Nil
-        def traverseFun(f: Func): Unit = {
-          fs ::= f
+      type Stencil = (Int,Int)
+
+      def getAllStages: List[(Func, Stencil, Stencil)] = {
+
+        var fs: List[(Func, Stencil, Stencil)] = Nil
+
+        def stencil(v: Var, e: Expr): Stencil = e match {
+          case `v` => (0,0)
+          case Plus(`v`, Const(a))  => (a.toInt,a.toInt)
+          case Minus(`v`, Const(a)) => (-a.toInt,-a.toInt)
+        }
+
+        def merge(a: Stencil, b: Stencil): Stencil = (a._1 min b._1, a._2 max b._2)
+
+        def traverseFun(f: Func, sx: Stencil, sy: Stencil): Unit = {
+          fs ::= (f,sx,sy)
           traverse(f.impl.body) {
-            case f1@Func(s) if f1.computeRoot => traverseFun(f1)
+            case Apply(f1@Func(s), List(x,y)) =>  // FIXME: 2
+              val sx1 = stencil(f.impl.x, x)
+              val sy1 = stencil(f.impl.y, y)
+              if (f1.computeRoot)
+                traverseFun(f1, sx1, sy1)
+              // XXX TODO: traverse body if not computeRoot, widen stencil
             case _ => 
           }
         }
-        traverseFun(this)
-        fs.distinct
+        traverseFun(this, (0,0), (0,0))
+        // XXX
+        val gx = fs.groupBy(_._1).map(p => (p._1, p._2.map(_._2).reduce(merge)))
+        val gy = fs.groupBy(_._1).map(p => (p._1, p._2.map(_._3).reduce(merge)))
+        fs.map(_._1).distinct.map(k => (k,gx(k),gy(k)))
       }
 
       def realize[T:Type](w: Int, h: Int): Buffer[T] = {
-        //val fs = getAllStages
-        //fs.foreach(_.realize_internal) // XXX TODO: dimensions? need stencil analysis!!!
-        realize_internal(w,h)
+        val fs = getAllStages
+        implicit var fenv = Map[String, Buffer[_]]()
+        fs.foreach { p => 
+          val (f,(lx,hx),(ly,hy)) = p
+          assert(lx == 0) // TODO: support negative stencils
+          assert(ly == 0)
+          fenv += (f.s -> f.realize_internal[T](w+hx, h+hy))
+        }
+        fenv(s).asInstanceOf[Buffer[T]]
       }
 
-      def realize_internal[T:Type](w: Int, h: Int): Buffer[T] = {
+      def realize_internal[T:Type](w: Int, h: Int)(implicit fenv: FEnv): Buffer[T] = {
         val buf = new Buffer[T](w, h)
         var bounds = Map(impl.x.s -> w, impl.y.s -> h)
 
         for ((s,f) <- computeBounds)
           bounds += (s -> f(bounds))
 
-        def loop(vs: List[String], env: Map[String,Int])(f: Map[String,Int] => Unit): Unit = vs match {
+        def loop(vs: List[String], env: Env)(f: Env => Unit): Unit = vs match {
           case Nil => f(env)
           case x::vs => for (i <- 0 until bounds(x)) loop(vs, env + (x -> i))(f)
         }
@@ -239,7 +272,7 @@ object Test2 {
             env += (s -> f(env,bounds))
           val i = env(impl.x.s)
           val j = env(impl.y.s)
-          if (trace) println(s"$i,$j")
+          if (trace) println(s"$s $i,$j")
           buf(i,j) = eval[T](impl.body)
         }
         buf
@@ -247,8 +280,8 @@ object Test2 {
 
       def print_loop_nest(): Unit = {
         val fs = getAllStages
-        println("stages: " + fs.map(_.s).mkString(", "))
-        fs.foreach(_.print_loop_nest_internal)
+        println("stages: " + fs.mkString(", "))
+        fs.foreach(_._1.print_loop_nest_internal)
       }
 
       def print_loop_nest_internal(): Unit = {
@@ -283,6 +316,7 @@ object Test2 {
         val buf = new Buffer3[T](w, h, d)
         for (j <- 0 until h; i <- 0 until w; c <- 0 until d) {
           implicit val env = Map(impl.x.s -> i, impl.y.s -> j, impl.c.s -> c)
+          implicit val fenv = Map(): FEnv
           buf(i,j,c) = eval[T](impl.body)
         }
         buf
