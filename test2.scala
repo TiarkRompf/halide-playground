@@ -135,6 +135,7 @@ object Test2 {
       var computeRoot = false
       var computeAt: Option[(Func,Var)] = None
       var storeRoot = false
+      var storeAt: Option[(Func,Var)] = None
 
       var computeBounds: List[(String, BEnv => Stencil)] = _
       var computeVar: List[(String, (Env,BEnv) => Int)] = _
@@ -207,6 +208,12 @@ object Test2 {
         // currently a no-op
         vectorized :+= x.s
       }
+      def vectorize(x: Var, n: Int): Unit = {
+        val xo = Var(x.s +"_outer")
+        val xi = Var(x.s +"_inner")
+        split(x, xo, xi, n)
+        vectorize(xi)
+      }
       def unroll(x: Var): Unit = {
         assert(true) // what to check?
         // currently a no-op
@@ -231,6 +238,11 @@ object Test2 {
       def store_root(): Unit = {
         storeRoot = true
       }
+
+      def store_at(f: Func, y: Var): Unit = {
+        storeAt = Some((f,y))
+      }
+
 
 
       type Stencil = (Int,Int)
@@ -1424,14 +1436,18 @@ object Test2 {
         // done by each tile isn't so bad once the tiles get large
         // enough.
     }
-/*
+
+    def test87(): Unit = {
     // Let's try a mixed strategy that combines what we have done with
     // splitting, parallelizing, and vectorizing. This is one that
     // often works well in practice for large images. If you
     // understand this schedule, then you understand 95% of scheduling
     // in Halide.
-    {
-        Func producer("producer_mixed"), consumer("consumer_mixed");
+
+        val x = Var("x")
+        val y = Var("y")
+        val producer = Func("producer_mixed")
+        val consumer = Func("consumer_mixed");
         producer(x, y) = sin(x * y);
         consumer(x, y) = (producer(x, y) +
                           producer(x, y+1) +
@@ -1439,7 +1455,7 @@ object Test2 {
                           producer(x+1, y+1))/4;
 
         // Split the y coordinate of the consumer into strips of 16 scanlines:
-        Var yo, yi;
+        val yo = Var("yo"); val yi = Var("yi");
         consumer.split(y, yo, yi, 16);
         // Compute the strips using a thread pool and a task queue.
         consumer.parallel(yo);
@@ -1454,20 +1470,21 @@ object Test2 {
         // consumer, skipping work done on previous scanlines.
         producer.compute_at(consumer, yi);
         // Also vectorize the producer (because sin is vectorizable on x86 using SSE).
-        producer.vectorize(x, 4);
+        //producer.vectorize(x, 4);
 
         // Let's leave tracing off this time, because we're going to
         // evaluate over a larger image.
         // consumer.trace_stores();
         // producer.trace_stores();
 
-        Buffer<float> halide_result = consumer.realize(160, 160);
+        //Buffer<float> halide_result = consumer.realize(160, 160);
+        val halide_result = consumer.realize[Double](160, 160);
 
         // See figures/lesson_08_mixed.mp4 for a visualization.
 
         // Here's the equivalent (serial) C:
 
-        float c_result[160][160];
+        /*float c_result[160][160];
 
         // For every strip of 16 scanlines (this loop is parallel in
         // the Halide version)
@@ -1536,7 +1553,7 @@ object Test2 {
                 }
 
             }
-        }
+        }*/
         printf("Pseudo-code for the schedule:\n");
         consumer.print_loop_nest();
         printf("\n");
@@ -1546,7 +1563,7 @@ object Test2 {
         // Let's check the C result against the Halide result. Doing
         // this I found several bugs in my C implementation, which
         // should tell you something.
-        for (int y = 0; y < 160; y++) {
+        /*for (int y = 0; y < 160; y++) {
             for (int x = 0; x < 160; x++) {
                 float error = halide_result(x, y) - c_result[y][x];
                 // It's floating-point math, so we'll allow some slop:
@@ -1556,7 +1573,7 @@ object Test2 {
                     return -1;
                 }
             }
-        }
+        }*/
 
     }
 
@@ -1589,8 +1606,6 @@ object Test2 {
     // trade-offs between locality, redundant work, and parallelism,
     // without messing up the actual result you're trying to compute.
 
-*/
-
 
   def main(args: Array[String]): Unit = {
     test1()
@@ -1614,6 +1629,11 @@ object Test2 {
     test84()
     test85()
     test86()
+    test87() 
+
+    // TODO: +non-divisible split, circular buffer, store_at, compute_at after split
+
+    // TODO: check results, parallelize
 
     println("done")
   }
