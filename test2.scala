@@ -247,9 +247,9 @@ object Test2 {
 
       type Stencil = (Int,Int)
       def stencil(v: Var, e: Expr): Stencil = e match {
-        case `v` => (0,1)
-        case Plus(`v`, Const(a))  => (a.toInt,a.toInt+1)
-        case Minus(`v`, Const(a)) => (-a.toInt,-a.toInt+1)
+        case `v` => (0,0)
+        case Plus(`v`, Const(a))  => (a.toInt,a.toInt)
+        case Minus(`v`, Const(a)) => (-a.toInt,-a.toInt)
       }
       def merge(a: Stencil, b: Stencil): Stencil = (a._1 min b._1, a._2 max b._2)
 
@@ -281,7 +281,7 @@ object Test2 {
             case Apply(f1@Func(s), List(x,y)) =>  // FIXME: 2
               val sx1 = stencil(f.impl.x, x)
               val sy1 = stencil(f.impl.y, y)
-              if (f1.computeAt == Some(this,vy)) {
+              if (f1.computeAt == Some(this,vy) || f1.storeAt == Some(this,vy)) {
                 fs ::= (f1,sx1,sy1)
                 traverseFun(f1, sx1, sy1)
               }
@@ -319,6 +319,26 @@ object Test2 {
         for ((s,f) <- computeBounds)
           bounds += (s -> f(bounds))
 
+        // TODO: optimize (exponential)
+        def hilo(vs: List[String], env: Env, fenv: FEnv): (Stencil, Stencil) = vs match {
+          case Nil =>
+            var env1 = env
+            for ((s,f) <- computeVar)
+              env1 += (s -> f(env1,bounds))
+            val i = env1(impl.x.s)
+            val j = env1(impl.y.s)
+            ((i,i), (j,j))
+
+          case x::vs => 
+            assert(bounds(x)._1 < bounds(x)._2)
+
+            val (lsx,lsy) = hilo(vs, env + (x -> bounds(x)._1), fenv)
+            val (hsx,hsy) = hilo(vs, env + (x -> (bounds(x)._2-1)), fenv)
+
+            (merge(lsx,hsx), merge(lsy,hsy))
+        }
+
+
         def loop(vs: List[String], env: Env, fenv: FEnv)(f: (Env,FEnv) => Unit): Unit = vs match {
           case Nil => 
             f(env, fenv)
@@ -330,19 +350,58 @@ object Test2 {
               for ((f,(lx,hx),(ly,hy)) <- getInternalStages(Var(x))) {
                 //println("XXX! "+x+" --> "+f)
 
+                /* TODO:
+                computeAt case:
+                Compute the min/max x/y values f is accessed at in remaining loops (vs)
+
+                */
+
+                val ((lx1,hx1),(ly1,hy1)) = hilo(vs, env1, fenv1)
+
+                val ((lx2,hx2),(ly2,hy2)) = ((lx1+lx,hx1+hx),(ly1+ly,hy1+hy)) // combine hilo+stencil
+
+
+                if (f.s == "producer_tile") {
+                  println("XXXXX "+f)
+
+                  println(((lx1,hx1),(ly1,hy1)))
+                  println(((lx ,hx ),(ly ,hy )))
+                  println(((lx2,hx2),(ly2,hy2)))
+                }
+
+                if (!(fenv1 contains f.s)) {
+
+                val buf = new Buffer[T](lx2, ly2, hx2+1, hy2+1)
+                if (f.computeAt == Some((this, Var(x))))
+                  f.realize_internal[T](lx2, ly2, hx2+1, hy2+1)
+                // else computed later ...
+                fenv1 += (f.s -> buf)
+
+                } else {
+                  assert(false)
+                }
+
+/*
+
                 // FIXME: this doesn't work if x/y have been split, because x/y are
                 // put into env only in the innermost loop by computeVar
 
-                if (!f.storeRoot) {
+                if (!(fenv1 contains f.s)) {
                   // we're allocating a fresh buffer
 
                   // find current ranges of x/y, narrowed by enclosing loops
                   val (llx, hhx) = if (env1 contains impl.x.s) (env1(impl.x.s), env1(impl.x.s)) else (x0,x1)
                   val (lly, hhy) = if (env1 contains impl.y.s) (env1(impl.y.s), env1(impl.y.s)) else (y0,y1)
 
-                  fenv1 += (f.s -> f.realize_internal[T](llx+lx, lly+ly, hhx+hx, hhy+hy))
+                  // TODO: if store_at, need to figure out circular structure based on usage later
+
+                  val buf = new Buffer[T](llx+lx, lly+ly, hhx+hx, hhy+hy)
+                  if (f.computeAt == Some((this, Var(x))))
+                    f.realize_internal[T](llx+lx, lly+ly, hhx+hx, hhy+hy)
+                  // else computed later ...
+                  fenv1 += (f.s -> buf)
                 } else {
-                  // if store_root, then we already have a buffer. reuse scanlines already computed.
+                  // we already have a buffer. reuse scanlines already computed.
                   val buf = fenv1(f.s).asInstanceOf[Buffer[T]]
 
                   // find current ranges of x/y, narrowed by enclosing loops
@@ -368,6 +427,7 @@ object Test2 {
 
                   // TODO: use a circular buffer! (discard old data...)
                 }
+*/                
               }
 
               loop(vs, env1, fenv1)(f)
@@ -1368,7 +1428,7 @@ object Test2 {
         // We'll compute 8x8 of the consumer, in 4x4 tiles.
         val (x_outer, y_outer, x_inner, y_inner) = 
           (Var("x_outer"), Var("y_outer"), Var("x_inner"), Var("y_inner"))
-        consumer.tile(x, y, x_outer, y_outer, x_inner, y_inner, 4, 4);
+        consumer.tile(x, y, x_outer, y_outer, x_inner, y_inner, 4,4)
 
         // Compute the producer per tile of the consumer
         producer.compute_at(consumer, x_outer);
@@ -1470,7 +1530,7 @@ object Test2 {
         // consumer, skipping work done on previous scanlines.
         producer.compute_at(consumer, yi);
         // Also vectorize the producer (because sin is vectorizable on x86 using SSE).
-        //producer.vectorize(x, 4);
+        producer.vectorize(x, 4);
 
         // Let's leave tracing off this time, because we're going to
         // evaluate over a larger image.
@@ -1478,7 +1538,7 @@ object Test2 {
         // producer.trace_stores();
 
         //Buffer<float> halide_result = consumer.realize(160, 160);
-        val halide_result = consumer.realize[Double](160, 160);
+        val halide_result = consumer.realize[Double](80, 32);
 
         // See figures/lesson_08_mixed.mp4 for a visualization.
 
@@ -1608,32 +1668,38 @@ object Test2 {
 
 
   def main(args: Array[String]): Unit = {
-    test1()
+    // test1()
 
     //test2()
 
-    test51()
-    test52()
-    test53()
-    test54()
-    test55()
-    test56()
-    test57()
-    test58()
-    test59()
-    test5A()
+    // test51()
+    // test52()
+    // test53()
+    // test54()
+    // test55()
+    // test56()
+    // test57()
+    // test58()
+    // test59()
+    // test5A()
 
-    test81()
-    test82()
-    test83()
-    test84()
-    test85()
+    // test81()
+    // test82()
+    // test83()
+    // test84()
+    // test85()
     test86()
-    test87() 
+    // test87() 
 
-    // TODO: +non-divisible split, circular buffer, store_at, compute_at after split
+    // TODO: per-tile producer, not just per line (compute_at after split)
 
-    // TODO: check results, parallelize
+    // TODO: +non-divisible split, circular buffer, store_at
+
+    // TODO: optimize hilo
+
+    // TODO: scalatest, check results, parallelize
+
+    // TODO: C codegen
 
     println("done")
   }
