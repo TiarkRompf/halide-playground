@@ -131,7 +131,7 @@ object Test2 {
       var impl: FuncInternal = _
       var order: List[String] = _
 
-      var trace = false
+      var trace = 0
       var computeRoot = false
       var computeAt: Option[(Func,Var)] = None
       var storeRoot = false
@@ -225,7 +225,7 @@ object Test2 {
         parallel :+= x.s
       }
 
-      def trace_stores() = trace = true
+      def trace_stores() = trace = 3
 
       def compute_root(): Unit = {
         computeRoot = true
@@ -297,13 +297,31 @@ object Test2 {
       }
 
       def realize[T:Type](w: Int, h: Int): Buffer[T] = {
-        val fs = getRootStages
         implicit var fenv = Map[String, Buffer[_]]()
-        for ((f,(lx,hx),(ly,hy)) <- fs) {
-          val buf = new Buffer[T](lx, ly, w+hx, h+hy)
-          if (f.computeRoot || f == this)
-            f.realize_internal[T](lx, ly, w+hx, h+hy, buf)
-          fenv += (f.s -> buf)
+        for ((f,(lx,hx),(ly,hy)) <- getRootStages) {
+          if (f.storeRoot) {
+              // compute bounds -- redundant, just for hilo!
+              var bounds = Map(impl.x.s -> (0,w), impl.y.s -> (0,h))
+              for ((s,f) <- computeBounds)
+                bounds += (s -> f(bounds))
+
+              // get x,y rectangle at point of first computation (+ stencil for f)
+              val ((lx11,hx11),(ly11,hy11)) = hiloPrefix(order, f.computeAt.get._2, Map(), bounds, fenv)
+              val ((lx22,hx22),(ly22,hy22)) = ((lx11+lx,hx11+hx),(ly11+ly,hy11+hy))
+
+              // compute internal size (may be smaller, circular)
+              val ww = hx22+1-lx22
+              val hh = hy22+1-ly22
+
+              if (trace >= 2) println(s"--- root --- ${f.s} --- alloc buffer  "+((0+lx, 0+ly), (w+hx+1, h+hx+1))+" size "+(ww,hh))
+              val buf = new Buffer[T](0+lx, 0+ly, w+hx+1, h+hy+1, ww, hh)
+              fenv += (f.s -> buf)
+          } else {
+            val buf = new Buffer[T](0+lx, 0+ly, w+hx+1, h+hy+1)
+            if (f.computeRoot || f == this)
+              f.realize_internal[T](0+lx, 0+ly, w+hx+1, h+hy+1, buf)
+            fenv += (f.s -> buf)
+          }
         }
         fenv(s).asInstanceOf[Buffer[T]]
       }
@@ -313,31 +331,40 @@ object Test2 {
         realize_internal(x0,y0,x1,y1,buf)
       }
 
+      // TODO: optimize (exponential)
+      def hilo(vs: List[String], env: Env, bounds: BEnv, fenv: FEnv): (Stencil, Stencil) = vs match {
+        case Nil =>
+          var env1 = env
+          for ((s,f) <- computeVar)
+            env1 += (s -> f(env1,bounds))
+          val i = env1(impl.x.s)
+          val j = env1(impl.y.s)
+          ((i,i), (j,j))
+
+        case x::vs => 
+          assert(bounds(x)._1 < bounds(x)._2)
+
+          val (lsx,lsy) = hilo(vs, env + (x -> bounds(x)._1), bounds, fenv)
+          val (hsx,hsy) = hilo(vs, env + (x -> (bounds(x)._2-1)), bounds, fenv)
+
+          (merge(lsx,hsx), merge(lsy,hsy))
+      }
+
+      def hiloPrefix(vs: List[String], y: Var, env: Env, bounds: BEnv, fenv: FEnv): (Stencil, Stencil) = vs match {
+        case Nil =>
+          ((0,0), (0,0))
+        case x::vs => 
+          assert(bounds(x)._1 < bounds(x)._2)
+
+          if (x == y.s) hilo(vs, env + (x -> bounds(x)._1), bounds, fenv)
+          else hiloPrefix(vs, y, env + (x -> bounds(x)._1), bounds, fenv)
+      }
+
       def realize_internal[T:Type](x0: Int, y0: Int, x1: Int, y1: Int, buf: Buffer[T])(implicit fenv: FEnv): Buffer[T] = {
         var bounds = Map(impl.x.s -> (x0,x1), impl.y.s -> (y0,y1))
 
         for ((s,f) <- computeBounds)
           bounds += (s -> f(bounds))
-
-        // TODO: optimize (exponential)
-        def hilo(vs: List[String], env: Env, fenv: FEnv): (Stencil, Stencil) = vs match {
-          case Nil =>
-            var env1 = env
-            for ((s,f) <- computeVar)
-              env1 += (s -> f(env1,bounds))
-            val i = env1(impl.x.s)
-            val j = env1(impl.y.s)
-            ((i,i), (j,j))
-
-          case x::vs => 
-            assert(bounds(x)._1 < bounds(x)._2)
-
-            val (lsx,lsy) = hilo(vs, env + (x -> bounds(x)._1), fenv)
-            val (hsx,hsy) = hilo(vs, env + (x -> (bounds(x)._2-1)), fenv)
-
-            (merge(lsx,hsx), merge(lsy,hsy))
-        }
-
 
         def loop(vs: List[String], env: Env, fenv: FEnv)(f: (Env,FEnv) => Unit): Unit = vs match {
           case Nil => 
@@ -348,86 +375,55 @@ object Test2 {
               val env1 = env + (x -> i)
               implicit var fenv1 = fenv
               for ((f,(lx,hx),(ly,hy)) <- getInternalStages(Var(x))) {
-                //println("XXX! "+x+" --> "+f)
 
-                /* TODO:
-                computeAt case:
-                Compute the min/max x/y values f is accessed at in remaining loops (vs)
+                // get current x,y rectangle (+ stencil for f)
+                val ((lx1,hx1),(ly1,hy1)) = hilo(vs, env1, bounds, fenv1)
+                val ((lx2,hx2),(ly2,hy2)) = ((lx1+lx,hx1+hx),(ly1+ly,hy1+hy)) // extend by stencil
 
-                */
+                if (!(fenv1 contains f.s)) { // create a new buffer
+                  // store_at or compute_at without previous store_root or store_at
 
-                val ((lx1,hx1),(ly1,hy1)) = hilo(vs, env1, fenv1)
+                  // get x,y rectangle at point of first computation (+ stencil for f)
+                  val ((lx11,hx11),(ly11,hy11)) = hiloPrefix(vs, f.computeAt.get._2, env1, bounds, fenv1)
+                  val ((lx22,hx22),(ly22,hy22)) = ((lx11+lx,hx11+hx),(ly11+ly,hy11+hy))
 
-                val ((lx2,hx2),(ly2,hy2)) = ((lx1+lx,hx1+hx),(ly1+ly,hy1+hy)) // combine hilo+stencil
+                  // compute internal size (may be smaller, circular)
+                  val w = hx22+1-lx22
+                  val h = hy22+1-ly22
 
+                  if (trace >= 2) println(s"--- $x --- ${f.s} --- alloc buffer  "+((lx2, ly2), (hx2+1, hy2+1))+" size "+(w,h))
 
-                if (f.s == "producer_tile") {
-                  println("XXXXX "+f)
+                  // if (trace >= 2) if (hy2+1-ly2 > h) println("sliding in y")
+                  // if (trace >= 2) if (hx2+1-lx2 > w) println("sliding in x")
 
-                  println(((lx1,hx1),(ly1,hy1)))
-                  println(((lx ,hx ),(ly ,hy )))
-                  println(((lx2,hx2),(ly2,hy2)))
-                }
-
-                if (!(fenv1 contains f.s)) {
-
-                val buf = new Buffer[T](lx2, ly2, hx2+1, hy2+1)
-                if (f.computeAt == Some((this, Var(x))))
-                  f.realize_internal[T](lx2, ly2, hx2+1, hy2+1)
-                // else computed later ...
-                fenv1 += (f.s -> buf)
-
-                } else {
-                  assert(false)
-                }
-
-/*
-
-                // FIXME: this doesn't work if x/y have been split, because x/y are
-                // put into env only in the innermost loop by computeVar
-
-                if (!(fenv1 contains f.s)) {
-                  // we're allocating a fresh buffer
-
-                  // find current ranges of x/y, narrowed by enclosing loops
-                  val (llx, hhx) = if (env1 contains impl.x.s) (env1(impl.x.s), env1(impl.x.s)) else (x0,x1)
-                  val (lly, hhy) = if (env1 contains impl.y.s) (env1(impl.y.s), env1(impl.y.s)) else (y0,y1)
-
-                  // TODO: if store_at, need to figure out circular structure based on usage later
-
-                  val buf = new Buffer[T](llx+lx, lly+ly, hhx+hx, hhy+hy)
+                  val buf = new Buffer[T](lx2, ly2, hx2+1, hy2+1, w, h)
                   if (f.computeAt == Some((this, Var(x))))
-                    f.realize_internal[T](llx+lx, lly+ly, hhx+hx, hhy+hy)
-                  // else computed later ...
+                    f.realize_internal[T](lx2, ly2, hx2+1, hy2+1, buf)
+                  else
+                    assert(f.storeAt == Some((this, Var(x))))
                   fenv1 += (f.s -> buf)
-                } else {
-                  // we already have a buffer. reuse scanlines already computed.
+
+                } else { // already have a buffer
+                  assert(f.computeAt == Some((this, Var(x)))) // compute_at with previous store_root or store_at
+
                   val buf = fenv1(f.s).asInstanceOf[Buffer[T]]
 
-                  // find current ranges of x/y, narrowed by enclosing loops
-                  val (llx, hhx) = if (env1 contains impl.x.s) { 
-                    if (env1(impl.x.s) == 0) 
-                      (env1(impl.x.s)+lx, env1(impl.x.s)+hx)
-                    else {
-                      // assert previous bounds ...
-                      (env1(impl.x.s)+hx-1, env1(impl.x.s)+hx) // compute only one new scanline! 
-                    }
-                  } else (x0+lx,x1+hx)
+                  // SCANLINE OPT:
+                  // we're computing only the last scanline (per dimension)
+                  // if we have pre-allocated storage for a larger window,
+                  // and we're not at the 0 coordinate in that window
+                  // BIG ASSUMPTION:
+                  // we're iterating low to high in increments of 1 !!
+                  val xAtStart = buf.x0 == lx2
+                  val yAtStart = buf.y0 == ly2
 
-                  val (lly, hhy) = if (env1 contains impl.y.s) {
-                    if (env1(impl.y.s) == 0) 
-                      (env1(impl.y.s)+ly, env1(impl.y.s)+hy)
-                    else {
-                      // assert previous bounds ...
-                      (env1(impl.y.s)+hy-1, env1(impl.y.s)+hy) // compute only one new scanline!
-                    }
-                  } else (y0+ly,y1+hy)
+                  val lx3 = if (xAtStart) lx2 else hx2
+                  val ly3 = if (yAtStart) ly2 else hy2
 
-                  f.realize_internal[T](llx, lly, hhx, hhy, buf)
+                  if (trace >= 2) println(s"--- $x --- ${f.s} --- fill buffer "+((lx3, ly3), (hx2+1, hy2+1)))
 
-                  // TODO: use a circular buffer! (discard old data...)
+                  f.realize_internal[T](lx3, ly3, hx2+1, hy2+1, buf)
                 }
-*/                
               }
 
               loop(vs, env1, fenv1)(f)
@@ -443,7 +439,7 @@ object Test2 {
             env += (s -> f(env,bounds))
           val i = env(impl.x.s)
           val j = env(impl.y.s)
-          if (trace) println(s"$s $i,$j")
+          if (trace >= 3) println(s"$s $i,$j")
           buf(i,j) = eval[T](impl.body)
         }
         buf
@@ -469,9 +465,11 @@ object Test2 {
             println(s"for ${x}:")
 
           for (p <- getInternalStages(Var(x))) {
-            println(s"sub $p {")
-            p._1.print_loop_nest()
-            println("}")
+            if (p._1.computeAt == Some((this, Var(x)))) {
+              println(s"sub $p {")
+              p._1.print_loop_nest()
+              println("}")
+            } else println(s"alloc $p")
           }
         }
         for ((s,_) <- computeVar)
@@ -501,10 +499,12 @@ object Test2 {
       }
     }
 
-    class Buffer[T:Type](val x0: Int, val y0: Int, val x1: Int, val y1: Int) {
-      val data: Array[Array[T]] = Array.ofDim[T](y1-y0, x1-x0)
-      def apply(x: Int, y: Int) = data(y-y0)(x-x0)
-      def update(x: Int, y: Int, v: T) = data(y-y0)(x-x0) = v
+    class Buffer[T:Type](val x0: Int, val y0: Int, val x1: Int, val y1: Int, val w: Int, val h: Int) {
+      def this(x0: Int, y0: Int, x1: Int, y1: Int) = 
+        this(x0,y0,x1,y1,x1-x0,y1-y0)
+      val data: Array[Array[T]] = Array.ofDim[T](h, w)
+      def apply(x: Int, y: Int) = data((y-y0)%h)((x-x0)%w)
+      def update(x: Int, y: Int, v: T) = data((y-y0)%h)((x-x0)%w) = v
     }
 
     class Buffer3[T:Type](val width: Int, val height: Int, val channels: Int) {
@@ -1688,18 +1688,19 @@ object Test2 {
     // test83()
     // test84()
     // test85()
-    test86()
-    // test87() 
+    // test86()
+    test87() 
 
-    // TODO: per-tile producer, not just per line (compute_at after split)
-
-    // TODO: +non-divisible split, circular buffer, store_at
-
+    // TODO: +per-tile producer, not just per line (compute_at after split)
+    // TODO: +non-divisible split, 
+    // TODO: +storeAt
+    // TODO: +scanline
+    // TODO: +circular buffer
     // TODO: optimize hilo
-
-    // TODO: scalatest, check results, parallelize
-
+    // TODO: scalatest, check results, 
+    // TODO: parallelize?
     // TODO: C codegen
+    // TODO: cleanup
 
     println("done")
   }
