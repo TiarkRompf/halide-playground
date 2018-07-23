@@ -391,10 +391,11 @@ object Test2 {
                   val w = hx22+1-lx22
                   val h = hy22+1-ly22
 
-                  if (trace >= 2) println(s"--- $x --- ${f.s} --- alloc buffer  "+((lx2, ly2), (hx2+1, hy2+1))+" size "+(w,h))
+                  val verb = if (f.storeAt.isEmpty) "alloc+fill" else "alloc"
+                  if (trace >= 2) println(s"--- $x --- ${f.s} --- $verb buffer  "+((lx2, ly2), (hx2+1, hy2+1))+" size "+(w,h))
 
-                  // if (trace >= 2) if (hy2+1-ly2 > h) println("sliding in y")
-                  // if (trace >= 2) if (hx2+1-lx2 > w) println("sliding in x")
+                  if (trace >= 2) if (hy2+1-ly2 > h) println("sliding in y")
+                  if (trace >= 2) if (hx2+1-lx2 > w) println("sliding in x")
 
                   val buf = new Buffer[T](lx2, ly2, hx2+1, hy2+1, w, h)
                   if (f.computeAt == Some((this, Var(x))))
@@ -1536,9 +1537,11 @@ object Test2 {
         // evaluate over a larger image.
         // consumer.trace_stores();
         // producer.trace_stores();
+        consumer.trace = 2
+        producer.trace = 2
 
         //Buffer<float> halide_result = consumer.realize(160, 160);
-        val halide_result = consumer.realize[Double](80, 32);
+        val halide_result = consumer.realize[Double](160, 160);
 
         // See figures/lesson_08_mixed.mp4 for a visualization.
 
@@ -1668,27 +1671,27 @@ object Test2 {
 
 
   def main(args: Array[String]): Unit = {
-    // test1()
+    test1()
 
     //test2()
 
-    // test51()
-    // test52()
-    // test53()
-    // test54()
-    // test55()
-    // test56()
-    // test57()
-    // test58()
-    // test59()
-    // test5A()
+    test51()
+    test52()
+    test53()
+    test54()
+    test55()
+    test56()
+    test57()
+    test58()
+    test59()
+    test5A()
 
-    // test81()
-    // test82()
-    // test83()
-    // test84()
-    // test85()
-    // test86()
+    test81()
+    test82()
+    test83()
+    test84()
+    test85()
+    test86()
     test87() 
 
     // TODO: +per-tile producer, not just per line (compute_at after split)
