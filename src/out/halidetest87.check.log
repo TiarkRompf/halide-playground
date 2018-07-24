@@ -1,0 +1,204 @@
+--- yo --- producer_mixed --- alloc buffer  ((0,0),(161,17)) size (161,2)
+sliding in y
+--- yi --- producer_mixed --- fill buffer ((0,0),(161,2))
+--- yi --- producer_mixed --- fill buffer ((0,2),(161,3)) !
+--- yi --- producer_mixed --- fill buffer ((0,3),(161,4)) !
+--- yi --- producer_mixed --- fill buffer ((0,4),(161,5)) !
+--- yi --- producer_mixed --- fill buffer ((0,5),(161,6)) !
+--- yi --- producer_mixed --- fill buffer ((0,6),(161,7)) !
+--- yi --- producer_mixed --- fill buffer ((0,7),(161,8)) !
+--- yi --- producer_mixed --- fill buffer ((0,8),(161,9)) !
+--- yi --- producer_mixed --- fill buffer ((0,9),(161,10)) !
+--- yi --- producer_mixed --- fill buffer ((0,10),(161,11)) !
+--- yi --- producer_mixed --- fill buffer ((0,11),(161,12)) !
+--- yi --- producer_mixed --- fill buffer ((0,12),(161,13)) !
+--- yi --- producer_mixed --- fill buffer ((0,13),(161,14)) !
+--- yi --- producer_mixed --- fill buffer ((0,14),(161,15)) !
+--- yi --- producer_mixed --- fill buffer ((0,15),(161,16)) !
+--- yi --- producer_mixed --- fill buffer ((0,16),(161,17)) !
+--- yo --- producer_mixed --- alloc buffer  ((0,16),(161,33)) size (161,2)
+sliding in y
+--- yi --- producer_mixed --- fill buffer ((0,16),(161,18))
+--- yi --- producer_mixed --- fill buffer ((0,18),(161,19)) !
+--- yi --- producer_mixed --- fill buffer ((0,19),(161,20)) !
+--- yi --- producer_mixed --- fill buffer ((0,20),(161,21)) !
+--- yi --- producer_mixed --- fill buffer ((0,21),(161,22)) !
+--- yi --- producer_mixed --- fill buffer ((0,22),(161,23)) !
+--- yi --- producer_mixed --- fill buffer ((0,23),(161,24)) !
+--- yi --- producer_mixed --- fill buffer ((0,24),(161,25)) !
+--- yi --- producer_mixed --- fill buffer ((0,25),(161,26)) !
+--- yi --- producer_mixed --- fill buffer ((0,26),(161,27)) !
+--- yi --- producer_mixed --- fill buffer ((0,27),(161,28)) !
+--- yi --- producer_mixed --- fill buffer ((0,28),(161,29)) !
+--- yi --- producer_mixed --- fill buffer ((0,29),(161,30)) !
+--- yi --- producer_mixed --- fill buffer ((0,30),(161,31)) !
+--- yi --- producer_mixed --- fill buffer ((0,31),(161,32)) !
+--- yi --- producer_mixed --- fill buffer ((0,32),(161,33)) !
+--- yo --- producer_mixed --- alloc buffer  ((0,32),(161,49)) size (161,2)
+sliding in y
+--- yi --- producer_mixed --- fill buffer ((0,32),(161,34))
+--- yi --- producer_mixed --- fill buffer ((0,34),(161,35)) !
+--- yi --- producer_mixed --- fill buffer ((0,35),(161,36)) !
+--- yi --- producer_mixed --- fill buffer ((0,36),(161,37)) !
+--- yi --- producer_mixed --- fill buffer ((0,37),(161,38)) !
+--- yi --- producer_mixed --- fill buffer ((0,38),(161,39)) !
+--- yi --- producer_mixed --- fill buffer ((0,39),(161,40)) !
+--- yi --- producer_mixed --- fill buffer ((0,40),(161,41)) !
+--- yi --- producer_mixed --- fill buffer ((0,41),(161,42)) !
+--- yi --- producer_mixed --- fill buffer ((0,42),(161,43)) !
+--- yi --- producer_mixed --- fill buffer ((0,43),(161,44)) !
+--- yi --- producer_mixed --- fill buffer ((0,44),(161,45)) !
+--- yi --- producer_mixed --- fill buffer ((0,45),(161,46)) !
+--- yi --- producer_mixed --- fill buffer ((0,46),(161,47)) !
+--- yi --- producer_mixed --- fill buffer ((0,47),(161,48)) !
+--- yi --- producer_mixed --- fill buffer ((0,48),(161,49)) !
+--- yo --- producer_mixed --- alloc buffer  ((0,48),(161,65)) size (161,2)
+sliding in y
+--- yi --- producer_mixed --- fill buffer ((0,48),(161,50))
+--- yi --- producer_mixed --- fill buffer ((0,50),(161,51)) !
+--- yi --- producer_mixed --- fill buffer ((0,51),(161,52)) !
+--- yi --- producer_mixed --- fill buffer ((0,52),(161,53)) !
+--- yi --- producer_mixed --- fill buffer ((0,53),(161,54)) !
+--- yi --- producer_mixed --- fill buffer ((0,54),(161,55)) !
+--- yi --- producer_mixed --- fill buffer ((0,55),(161,56)) !
+--- yi --- producer_mixed --- fill buffer ((0,56),(161,57)) !
+--- yi --- producer_mixed --- fill buffer ((0,57),(161,58)) !
+--- yi --- producer_mixed --- fill buffer ((0,58),(161,59)) !
+--- yi --- producer_mixed --- fill buffer ((0,59),(161,60)) !
+--- yi --- producer_mixed --- fill buffer ((0,60),(161,61)) !
+--- yi --- producer_mixed --- fill buffer ((0,61),(161,62)) !
+--- yi --- producer_mixed --- fill buffer ((0,62),(161,63)) !
+--- yi --- producer_mixed --- fill buffer ((0,63),(161,64)) !
+--- yi --- producer_mixed --- fill buffer ((0,64),(161,65)) !
+--- yo --- producer_mixed --- alloc buffer  ((0,64),(161,81)) size (161,2)
+sliding in y
+--- yi --- producer_mixed --- fill buffer ((0,64),(161,66))
+--- yi --- producer_mixed --- fill buffer ((0,66),(161,67)) !
+--- yi --- producer_mixed --- fill buffer ((0,67),(161,68)) !
+--- yi --- producer_mixed --- fill buffer ((0,68),(161,69)) !
+--- yi --- producer_mixed --- fill buffer ((0,69),(161,70)) !
+--- yi --- producer_mixed --- fill buffer ((0,70),(161,71)) !
+--- yi --- producer_mixed --- fill buffer ((0,71),(161,72)) !
+--- yi --- producer_mixed --- fill buffer ((0,72),(161,73)) !
+--- yi --- producer_mixed --- fill buffer ((0,73),(161,74)) !
+--- yi --- producer_mixed --- fill buffer ((0,74),(161,75)) !
+--- yi --- producer_mixed --- fill buffer ((0,75),(161,76)) !
+--- yi --- producer_mixed --- fill buffer ((0,76),(161,77)) !
+--- yi --- producer_mixed --- fill buffer ((0,77),(161,78)) !
+--- yi --- producer_mixed --- fill buffer ((0,78),(161,79)) !
+--- yi --- producer_mixed --- fill buffer ((0,79),(161,80)) !
+--- yi --- producer_mixed --- fill buffer ((0,80),(161,81)) !
+--- yo --- producer_mixed --- alloc buffer  ((0,80),(161,97)) size (161,2)
+sliding in y
+--- yi --- producer_mixed --- fill buffer ((0,80),(161,82))
+--- yi --- producer_mixed --- fill buffer ((0,82),(161,83)) !
+--- yi --- producer_mixed --- fill buffer ((0,83),(161,84)) !
+--- yi --- producer_mixed --- fill buffer ((0,84),(161,85)) !
+--- yi --- producer_mixed --- fill buffer ((0,85),(161,86)) !
+--- yi --- producer_mixed --- fill buffer ((0,86),(161,87)) !
+--- yi --- producer_mixed --- fill buffer ((0,87),(161,88)) !
+--- yi --- producer_mixed --- fill buffer ((0,88),(161,89)) !
+--- yi --- producer_mixed --- fill buffer ((0,89),(161,90)) !
+--- yi --- producer_mixed --- fill buffer ((0,90),(161,91)) !
+--- yi --- producer_mixed --- fill buffer ((0,91),(161,92)) !
+--- yi --- producer_mixed --- fill buffer ((0,92),(161,93)) !
+--- yi --- producer_mixed --- fill buffer ((0,93),(161,94)) !
+--- yi --- producer_mixed --- fill buffer ((0,94),(161,95)) !
+--- yi --- producer_mixed --- fill buffer ((0,95),(161,96)) !
+--- yi --- producer_mixed --- fill buffer ((0,96),(161,97)) !
+--- yo --- producer_mixed --- alloc buffer  ((0,96),(161,113)) size (161,2)
+sliding in y
+--- yi --- producer_mixed --- fill buffer ((0,96),(161,98))
+--- yi --- producer_mixed --- fill buffer ((0,98),(161,99)) !
+--- yi --- producer_mixed --- fill buffer ((0,99),(161,100)) !
+--- yi --- producer_mixed --- fill buffer ((0,100),(161,101)) !
+--- yi --- producer_mixed --- fill buffer ((0,101),(161,102)) !
+--- yi --- producer_mixed --- fill buffer ((0,102),(161,103)) !
+--- yi --- producer_mixed --- fill buffer ((0,103),(161,104)) !
+--- yi --- producer_mixed --- fill buffer ((0,104),(161,105)) !
+--- yi --- producer_mixed --- fill buffer ((0,105),(161,106)) !
+--- yi --- producer_mixed --- fill buffer ((0,106),(161,107)) !
+--- yi --- producer_mixed --- fill buffer ((0,107),(161,108)) !
+--- yi --- producer_mixed --- fill buffer ((0,108),(161,109)) !
+--- yi --- producer_mixed --- fill buffer ((0,109),(161,110)) !
+--- yi --- producer_mixed --- fill buffer ((0,110),(161,111)) !
+--- yi --- producer_mixed --- fill buffer ((0,111),(161,112)) !
+--- yi --- producer_mixed --- fill buffer ((0,112),(161,113)) !
+--- yo --- producer_mixed --- alloc buffer  ((0,112),(161,129)) size (161,2)
+sliding in y
+--- yi --- producer_mixed --- fill buffer ((0,112),(161,114))
+--- yi --- producer_mixed --- fill buffer ((0,114),(161,115)) !
+--- yi --- producer_mixed --- fill buffer ((0,115),(161,116)) !
+--- yi --- producer_mixed --- fill buffer ((0,116),(161,117)) !
+--- yi --- producer_mixed --- fill buffer ((0,117),(161,118)) !
+--- yi --- producer_mixed --- fill buffer ((0,118),(161,119)) !
+--- yi --- producer_mixed --- fill buffer ((0,119),(161,120)) !
+--- yi --- producer_mixed --- fill buffer ((0,120),(161,121)) !
+--- yi --- producer_mixed --- fill buffer ((0,121),(161,122)) !
+--- yi --- producer_mixed --- fill buffer ((0,122),(161,123)) !
+--- yi --- producer_mixed --- fill buffer ((0,123),(161,124)) !
+--- yi --- producer_mixed --- fill buffer ((0,124),(161,125)) !
+--- yi --- producer_mixed --- fill buffer ((0,125),(161,126)) !
+--- yi --- producer_mixed --- fill buffer ((0,126),(161,127)) !
+--- yi --- producer_mixed --- fill buffer ((0,127),(161,128)) !
+--- yi --- producer_mixed --- fill buffer ((0,128),(161,129)) !
+--- yo --- producer_mixed --- alloc buffer  ((0,128),(161,145)) size (161,2)
+sliding in y
+--- yi --- producer_mixed --- fill buffer ((0,128),(161,130))
+--- yi --- producer_mixed --- fill buffer ((0,130),(161,131)) !
+--- yi --- producer_mixed --- fill buffer ((0,131),(161,132)) !
+--- yi --- producer_mixed --- fill buffer ((0,132),(161,133)) !
+--- yi --- producer_mixed --- fill buffer ((0,133),(161,134)) !
+--- yi --- producer_mixed --- fill buffer ((0,134),(161,135)) !
+--- yi --- producer_mixed --- fill buffer ((0,135),(161,136)) !
+--- yi --- producer_mixed --- fill buffer ((0,136),(161,137)) !
+--- yi --- producer_mixed --- fill buffer ((0,137),(161,138)) !
+--- yi --- producer_mixed --- fill buffer ((0,138),(161,139)) !
+--- yi --- producer_mixed --- fill buffer ((0,139),(161,140)) !
+--- yi --- producer_mixed --- fill buffer ((0,140),(161,141)) !
+--- yi --- producer_mixed --- fill buffer ((0,141),(161,142)) !
+--- yi --- producer_mixed --- fill buffer ((0,142),(161,143)) !
+--- yi --- producer_mixed --- fill buffer ((0,143),(161,144)) !
+--- yi --- producer_mixed --- fill buffer ((0,144),(161,145)) !
+--- yo --- producer_mixed --- alloc buffer  ((0,144),(161,161)) size (161,2)
+sliding in y
+--- yi --- producer_mixed --- fill buffer ((0,144),(161,146))
+--- yi --- producer_mixed --- fill buffer ((0,146),(161,147)) !
+--- yi --- producer_mixed --- fill buffer ((0,147),(161,148)) !
+--- yi --- producer_mixed --- fill buffer ((0,148),(161,149)) !
+--- yi --- producer_mixed --- fill buffer ((0,149),(161,150)) !
+--- yi --- producer_mixed --- fill buffer ((0,150),(161,151)) !
+--- yi --- producer_mixed --- fill buffer ((0,151),(161,152)) !
+--- yi --- producer_mixed --- fill buffer ((0,152),(161,153)) !
+--- yi --- producer_mixed --- fill buffer ((0,153),(161,154)) !
+--- yi --- producer_mixed --- fill buffer ((0,154),(161,155)) !
+--- yi --- producer_mixed --- fill buffer ((0,155),(161,156)) !
+--- yi --- producer_mixed --- fill buffer ((0,156),(161,157)) !
+--- yi --- producer_mixed --- fill buffer ((0,157),(161,158)) !
+--- yi --- producer_mixed --- fill buffer ((0,158),(161,159)) !
+--- yi --- producer_mixed --- fill buffer ((0,159),(161,160)) !
+--- yi --- producer_mixed --- fill buffer ((0,160),(161,161)) !
+Pseudo-code for the schedule:
+stages: (Func(consumer_mixed),(0,0),(0,0))
+val max_yo = ...
+val max_yi = ...
+val max_x_outer = ...
+val max_x_inner = ...
+for yo (parallel):
+alloc (Func(producer_mixed),(0,1),(0,1))
+for yi:
+sub (Func(producer_mixed),(0,1),(0,1)) {
+  stages: (Func(producer_mixed),(0,0),(0,0))
+  val max_x_outer = ...
+  val max_x_inner = ...
+  for y:
+  for x_outer:
+  for x_inner (vectorized):
+  val x = ...
+  producer_mixed(...) = ...
+}
+for x_outer:
+for x_inner (vectorized):
+val x = ...
+val y = ...
+consumer_mixed(...) = ...

@@ -1,0 +1,51 @@
+Evaluating gradient with x_inner vectorized
+gradient_in_vectors 0,0
+gradient_in_vectors 1,0
+gradient_in_vectors 2,0
+gradient_in_vectors 3,0
+gradient_in_vectors 4,0
+gradient_in_vectors 5,0
+gradient_in_vectors 6,0
+gradient_in_vectors 7,0
+gradient_in_vectors 0,1
+gradient_in_vectors 1,1
+gradient_in_vectors 2,1
+gradient_in_vectors 3,1
+gradient_in_vectors 4,1
+gradient_in_vectors 5,1
+gradient_in_vectors 6,1
+gradient_in_vectors 7,1
+gradient_in_vectors 0,2
+gradient_in_vectors 1,2
+gradient_in_vectors 2,2
+gradient_in_vectors 3,2
+gradient_in_vectors 4,2
+gradient_in_vectors 5,2
+gradient_in_vectors 6,2
+gradient_in_vectors 7,2
+gradient_in_vectors 0,3
+gradient_in_vectors 1,3
+gradient_in_vectors 2,3
+gradient_in_vectors 3,3
+gradient_in_vectors 4,3
+gradient_in_vectors 5,3
+gradient_in_vectors 6,3
+gradient_in_vectors 7,3
+Equivalent C:
+Evaluating at (0,1,2,3), (0,0,0,0): (0,1,2,3)
+Evaluating at (4,5,6,7), (0,0,0,0): (4,5,6,7)
+Evaluating at (0,1,2,3), (1,1,1,1): (1,2,3,4)
+Evaluating at (4,5,6,7), (1,1,1,1): (5,6,7,8)
+Evaluating at (0,1,2,3), (2,2,2,2): (2,3,4,5)
+Evaluating at (4,5,6,7), (2,2,2,2): (6,7,8,9)
+Evaluating at (0,1,2,3), (3,3,3,3): (3,4,5,6)
+Evaluating at (4,5,6,7), (3,3,3,3): (7,8,9,10)
+Pseudo-code for the schedule:
+stages: (Func(gradient_in_vectors),(0,0),(0,0))
+val max_x_outer = ...
+val max_x_inner = ...
+for y:
+for x_outer:
+for x_inner (vectorized):
+val x = ...
+gradient_in_vectors(...) = ...
