@@ -313,13 +313,13 @@ object Halide {
           (merge(lsx,hsx), merge(lsy,hsy))
       }
       // compute the window of x,y values spanned by loop vars vs after y, given current env
-      def hiloPrefix(vs: List[String], y: Var, env: Env, bounds: BEnv): (Stencil, Stencil) = vs match {
+      def hiloAfter(y: Var, vs: List[String], env: Env, bounds: BEnv): (Stencil, Stencil) = vs match {
         case Nil =>
           ((0,0), (0,0))
         case x::vs => 
           assert(bounds(x)._1 < bounds(x)._2)
           if (x == y.s) hilo(vs, env + (x -> bounds(x)._1), bounds)
-          else hiloPrefix(vs, y, env + (x -> bounds(x)._1), bounds)
+          else hiloAfter(y, vs, env + (x -> bounds(x)._1), bounds)
       }
 
       def realize[T:Type](w: Int, h: Int): Buffer[T] = {
@@ -327,7 +327,7 @@ object Halide {
         for ((f,(lx,hx),(ly,hy)) <- getRootStages) {
           if (f.storeRoot) {
               // get x,y rectangle at point of first computation (+ stencil for f)
-              val (ux,uy) = widen2(hiloPrefix(order, f.computeAt.get._2, Map(), computeAllBounds(0,0,w,h)), ((lx,hx),(ly,hy)))
+              val (ux,uy) = widen2(hiloAfter(f.computeAt.get._2, order, Map(), computeAllBounds(0,0,w,h)), ((lx,hx),(ly,hy)))
               // compute internal size (may be smaller, circular)
               val (ww,hh) = (dim(ux)+1,dim(uy)+1)
               // alloc buffer
@@ -375,7 +375,7 @@ object Halide {
 
                   if (f.storeAt == Some((this, Var(x)))) {
                     // get x,y rectangle at point of first computation (+ stencil for f)
-                    val (ux,uy) = widen2(hiloPrefix(vs, f.computeAt.get._2, env1, bounds), ((lx,hx),(ly,hy)))
+                    val (ux,uy) = widen2(hiloAfter(f.computeAt.get._2, vs, env1, bounds), ((lx,hx),(ly,hy)))
                     // compute internal size (may be smaller, circular)
                     val (w,h) = (dim(ux)+1,dim(uy)+1)
 
