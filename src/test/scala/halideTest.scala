@@ -14,6 +14,7 @@ import Halide._
 // TODO: optimize hilo
 // TODO: internal cleanup
 // TODO: external cleanup, match halide error handling + output formatting
+// TODO: more halide tests (blur, )
 
 class HalideTest extends TutorialFunSuite {
     val under = "halide"
