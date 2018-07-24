@@ -8,11 +8,12 @@ import Halide._
 // TODO: +storeAt
 // TODO: +scanline
 // TODO: +circular buffer
-// TODO: optimize hilo
-// TODO: scalatest, check results, 
+// TODO: +scalatest, check results, 
 // TODO: parallelize?
-// TODO: C codegen
-// TODO: cleanup
+// TODO: C codegen (with or without LMS)
+// TODO: optimize hilo
+// TODO: internal cleanup
+// TODO: external cleanup, match halide error handling + output formatting
 
 class HalideTest extends TutorialFunSuite {
     val under = "halide"
