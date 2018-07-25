@@ -18,7 +18,9 @@ consumer_root_x 2,0
 producer_root_x 4,0
 producer_root_x 4,1
 consumer_root_x 3,0
---- x --- producer_root_x --- fill buffer ((0,2),(2,3)) !
+--- x --- producer_root_x --- fill buffer ((0,1),(2,3))
+producer_root_x 0,1
+producer_root_x 1,1
 producer_root_x 0,2
 producer_root_x 1,2
 consumer_root_x 0,1
@@ -31,7 +33,9 @@ consumer_root_x 2,1
 --- x --- producer_root_x --- fill buffer ((4,2),(5,3)) !!
 producer_root_x 4,2
 consumer_root_x 3,1
---- x --- producer_root_x --- fill buffer ((0,3),(2,4)) !
+--- x --- producer_root_x --- fill buffer ((0,2),(2,4))
+producer_root_x 0,2
+producer_root_x 1,2
 producer_root_x 0,3
 producer_root_x 1,3
 consumer_root_x 0,2
@@ -44,7 +48,9 @@ consumer_root_x 2,2
 --- x --- producer_root_x --- fill buffer ((4,3),(5,4)) !!
 producer_root_x 4,3
 consumer_root_x 3,2
---- x --- producer_root_x --- fill buffer ((0,4),(2,5)) !
+--- x --- producer_root_x --- fill buffer ((0,3),(2,5))
+producer_root_x 0,3
+producer_root_x 1,3
 producer_root_x 0,4
 producer_root_x 1,4
 consumer_root_x 0,3

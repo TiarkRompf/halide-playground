@@ -375,8 +375,8 @@ object Halide {
             val i = env1(impl.x.s)
             val j = env1(impl.y.s)
             val res = eval[T](impl.body)
-            //if (trace >= 3) println(s"$s $i,$j = $res")
-            if (trace >= 3) println(s"$s $i,$j")
+            if (trace >= 3) println(s"$s $i,$j = $res")
+            // if (trace >= 3) println(s"$s $i,$j")
             if (rdoms.isEmpty)
               buf(i,j) = res
             else
@@ -420,9 +420,31 @@ object Halide {
                   // BIG ASSUMPTION:
                   // we're iterating low to high in increments of 1 !!
                   val (xAtStart, yAtStart) = (buf.x0 == lx2, buf.y0 == ly2)
-                  val (lx3, ly3) = (if (xAtStart) lx2 else hx2, if (yAtStart) ly2 else hy2)
 
-                  if (trace >= 2) println(s"--- $x --- ${f.s} --- fill buffer "+((lx3, ly3), (hx2+1, hy2+1))+s" ${if(xAtStart)""else"!"}${if(yAtStart)""else"!"}")
+                  // BIG ASSUMPTION:
+                  // iterating y outer, x inner
+                  // when resetting x, need to recompute y, too
+                  // (when x doesn't move it always stays zero, so it's not a reset)
+
+                  val (xMoving, yMoving) = (buf.x0 != lx2 || buf.x1 != hx2+1, buf.y0 != ly2 || buf.y1 != hy2+1)
+                  val (xRecompute, yRecompute) = (xAtStart, yAtStart || (xAtStart && xMoving))
+
+                  // println(s"buf:     ${buf.x0},${buf.x1} ${buf.y0},${buf.y1}")
+                  // println(s"win:     ${lx2},${hx2+1} ${ly2},${hy2+1}")
+                  // println(s"atStart: $xAtStart, $yAtStart")
+                  // println(s"moving:  $xMoving, $yMoving")
+                  // println(s"recomp:  $xRecompute, $yRecompute")
+
+
+                  // What we really want to test is:
+                  // last time this loop was executed, what was the overlap
+                  // with the current window?
+
+                  val (lx3, ly3) = (if (xRecompute) lx2 else hx2, if (yRecompute) ly2 else hy2)
+
+                  if (trace >= 2) println(s"--- $x --- ${f.s} --- fill buffer "+((lx3, ly3), (hx2+1, hy2+1))+s" ${if(xRecompute)""else"!"}${if(yRecompute)""else"!"}")
+
+                  //println(s"$xAtStart, $yAtStart")
 
                   f.realize_internal[T](lx3, ly3, hx2+1, hy2+1, buf)
                 }
