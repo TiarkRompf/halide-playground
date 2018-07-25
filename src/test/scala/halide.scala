@@ -80,6 +80,8 @@ object Halide {
     case class Apply(x: Func, y: List[Expr]) extends Expr
     case class Apply3(f: Buffer3[_], x: Expr, y: Expr, c: Expr) extends Expr
 
+    case class RDom(s: String, lo: Int, hi: Int) extends Expr
+
     case class Const(x: Double) extends Expr
     case class Plus(x: Expr, y: Expr) extends Expr
     case class Minus(x: Expr, y: Expr) extends Expr
@@ -113,8 +115,16 @@ object Halide {
           val buf = fenv(f.s).asInstanceOf[Buffer[T]]
           buf(x,y)
         } else {
-          val env1: Env = Map(f.impl.x.s -> x, f.impl.y.s -> y)
-          eval[T](f.impl.body)(tpe, env1, fenv)
+          var res = tpe.fromInt(0)
+          def loop(rdoms: List[RDom])(implicit env: Env): Unit = rdoms match {
+            case r::rdoms =>
+              for (i <- r.lo until r.hi)
+                loop(rdoms)(env + (r.s -> i))
+            case Nil =>
+              res = tpe.plus(res, eval[T](f.impl.body))
+          }
+          loop(f.rdoms)(Map(f.impl.x.s -> x, f.impl.y.s -> y))
+          res
         }
       case Apply3(f,a,b,c) => tpe.fromInt(f(eval[Int](a), eval[Int](b), eval[Int](c)).asInstanceOf[UByte]) // assume byte
     }
@@ -142,6 +152,7 @@ object Halide {
     case class Func(s: String) {
       var impl: FuncInternal = _
       var order: List[String] = _
+      var rdoms: List[RDom] = _
 
       var trace = 0
       var computeRoot = false
@@ -161,7 +172,8 @@ object Halide {
 
       def update(x: Var, y: Var, body: Expr): Unit = {
         impl = FuncInternal(x,y,body)
-        order = List(y.s,x.s)
+        rdoms = Nil; traverse(body) { case r@RDom(_,_,_) => rdoms :+= r case _ => }
+        order = List(y.s,x.s) ++ rdoms.map(_.s)
         computeBounds = Nil
         computeVar = Nil
         vectorized = Nil
@@ -187,14 +199,17 @@ object Halide {
         // x_inner runs from 0 to factor
         // x = min(x_outer * factor, x_extent - factor) + x_inner + x_min
 
-        // even split only version below
-        computeBounds :+= ((x_outer.s, (bounds: BEnv) => (0, (dim(bounds(x.s)) + factor - 1) / factor) ))
-        computeBounds :+= ((x_inner.s, (bounds: BEnv) => (0, factor)))
-        computeVar    ::= ((x.s, (env:Env,bounds:BEnv) => bounds(x.s)._1 + ((env(x_outer.s) * factor) min (dim(bounds(x.s))- factor)) + env(x_inner.s)))
-
-        // computeBounds :+= ((x_outer.s, (bounds: BEnv) => { assert(dim(bounds(x.s)) % factor == 0); (0, dim(bounds(x.s)) / factor) })) // assert evenly divisible!!
-        // computeBounds :+= ((x_inner.s, (bounds: BEnv) => (0, factor)))
-        // computeVar    ::= ((x.s, (env:Env,bounds:BEnv) => bounds(x.s)._1 + env(x_outer.s) * factor + env(x_inner.s)))
+        val isPure = rdoms.isEmpty
+        if (isPure) {
+          computeBounds :+= ((x_outer.s, (bounds: BEnv) => (0, (dim(bounds(x.s)) + factor - 1) / factor) ))
+          computeBounds :+= ((x_inner.s, (bounds: BEnv) => (0, factor)))
+          computeVar    ::= ((x.s, (env:Env,bounds:BEnv) => bounds(x.s)._1 + ((env(x_outer.s) * factor) min (dim(bounds(x.s))- factor)) + env(x_inner.s)))
+        } else {
+          // even split only
+          computeBounds :+= ((x_outer.s, (bounds: BEnv) => { assert(dim(bounds(x.s)) % factor == 0); (0, dim(bounds(x.s)) / factor) })) // assert evenly divisible!!
+          computeBounds :+= ((x_inner.s, (bounds: BEnv) => (0, factor)))
+          computeVar    ::= ((x.s, (env:Env,bounds:BEnv) => bounds(x.s)._1 + env(x_outer.s) * factor + env(x_inner.s)))
+        }
       }
 
       def fuse(x: Var, y: Var, fused: Var): Unit = {
@@ -285,6 +300,8 @@ object Halide {
 
       def computeAllBounds(x0: Int, y0: Int, x1: Int, y1: Int) = {
         var bounds = Map(impl.x.s -> (x0,x1), impl.y.s -> (y0,y1))
+        for (RDom(s,l,h) <- rdoms)
+          bounds += (s -> (l,h))
         for ((s,f) <- computeBounds)
           bounds += (s -> f(bounds))
         bounds
@@ -360,7 +377,10 @@ object Halide {
             val res = eval[T](impl.body)
             //if (trace >= 3) println(s"$s $i,$j = $res")
             if (trace >= 3) println(s"$s $i,$j")
-            buf(i,j) = res
+            if (rdoms.isEmpty)
+              buf(i,j) = res
+            else
+              buf(i,j) = implicitly[Type[T]].plus(buf(i,j),res)
 
           case x::vs => 
             for (i <- bounds(x)._1 until bounds(x)._2) {
