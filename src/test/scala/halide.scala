@@ -109,7 +109,7 @@ object Halide {
       case ToByte(a)  => tpe.fromByte(eval[Byte](a))
       case Apply(f,as)=> 
         val List(x,y) = as.map(eval[Int]) // FIXME: only 2 args
-        if (f.computeRoot) {
+        if (fenv contains f.s) {
           val buf = fenv(f.s).asInstanceOf[Buffer[T]]
           buf(x,y)
         } else {
