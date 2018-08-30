@@ -346,7 +346,8 @@ object Halide {
               // get x,y rectangle at point of first computation (+ stencil for f)
               val (ux,uy) = widen2(hiloAfter(f.computeAt.get._2, order, Map(), computeAllBounds(0,0,w,h)), ((lx,hx),(ly,hy)))
               // compute internal size (may be smaller, circular)
-              val (ww,hh) = (dim(ux)+1,dim(uy)+1)
+              // BIG ASSUMPTION: y grows monotonically (can shrink buf in y)
+              val (ww,hh) = (w+hx,dim(uy)+1)
               // alloc buffer
               if (trace >= 2) println(s"--- root --- ${f.s} --- alloc buffer  "+((0+lx, 0+ly), (w+hx+1, h+hx+1))+" size "+(ww,hh))
               val buf = new Buffer[T](0+lx, 0+ly, w+hx, h+hy, ww, hh)
@@ -375,8 +376,8 @@ object Halide {
             val i = env1(impl.x.s)
             val j = env1(impl.y.s)
             val res = eval[T](impl.body)
-            if (trace >= 3) println(s"$s $i,$j = $res")
-            // if (trace >= 3) println(s"$s $i,$j")
+            // if (trace >= 3) println(s"$s $i,$j = $res")
+            if (trace >= 3) println(s"$s $i,$j")
             if (rdoms.isEmpty)
               buf(i,j) = res
             else
@@ -397,11 +398,11 @@ object Halide {
                     // get x,y rectangle at point of first computation (+ stencil for f)
                     val (ux,uy) = widen2(hiloAfter(f.computeAt.get._2, vs, env1, bounds), ((lx,hx),(ly,hy)))
                     // compute internal size (may be smaller, circular)
-                    val (w,h) = (dim(ux)+1,dim(uy)+1)
+                    // BIG ASSUMPTION: y grows monotonically (can shrink buf in y)
+                    val (w,h) = (hx2-lx2+1, dim(uy)+1)
 
                     if (trace >= 2) println(s"--- $x --- ${f.s} --- alloc buffer  "+((lx2, ly2), (hx2+1, hy2+1))+" size "+(w,h))
                     if (trace >= 2) if (hy2+1-ly2 > h) println("sliding in y")
-                    if (trace >= 2) if (hx2+1-lx2 > w) println("sliding in x")
 
                     fenv1 += (f.s -> new Buffer[T](lx2, ly2, hx2+1, hy2+1, w, h))
                   } else {
@@ -420,21 +421,11 @@ object Halide {
                   // BIG ASSUMPTION:
                   // we're iterating low to high in increments of 1 !!
                   val (xAtStart, yAtStart) = (buf.x0 == lx2, buf.y0 == ly2)
+                  val (xRecompute, yRecompute) = (xAtStart, yAtStart)
 
-                  // BIG ASSUMPTION:
-                  // iterating y outer, x inner
-                  // when resetting x, need to recompute y, too
-                  // (when x doesn't move it always stays zero, so it's not a reset)
-
-                  val (xMoving, yMoving) = (buf.x0 != lx2 || buf.x1 != hx2+1, buf.y0 != ly2 || buf.y1 != hy2+1)
-                  val (xRecompute, yRecompute) = (xAtStart, yAtStart || (xAtStart && xMoving))
-
-                  // println(s"buf:     ${buf.x0},${buf.x1} ${buf.y0},${buf.y1}")
-                  // println(s"win:     ${lx2},${hx2+1} ${ly2},${hy2+1}")
-                  // println(s"atStart: $xAtStart, $yAtStart")
-                  // println(s"moving:  $xMoving, $yMoving")
-                  // println(s"recomp:  $xRecompute, $yRecompute")
-
+                  // BIG ASSUMPTION: when we reset one dimension, the 
+                  // previous values of the other dimensions are still 
+                  // valid
 
                   // What we really want to test is:
                   // last time this loop was executed, what was the overlap
