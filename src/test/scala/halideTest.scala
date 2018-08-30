@@ -51,7 +51,7 @@ class HalideTest extends TutorialFunSuite {
       val y = Var("y")
       val c = Var("c")
 
-      val img = load_image("/Users/me/Desktop/tryout/halide/tutorial/images/rgb.png")
+      val img = load_image("images/rgb.png")
 
       val brighter = Func3()
 
